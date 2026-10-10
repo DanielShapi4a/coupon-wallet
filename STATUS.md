@@ -1,11 +1,16 @@
 # סטטוס הפרויקט
 
 - **עודכן:** 2026-10-10.
-- **השלב:** סוף שלב הארכיטקטורה, לפני הניסוי הטכני.
+- **השלב:** הניסוי הטכני 01 בביצוע.
 
 ## איך ממשיכים מכאן
 
 - **קודם כול:** קוראים את המסמך הזה.
+- **במחשב חדש, פעם אחת:**
+  - משכפלים את ה־`repo` ועוברים ל־`branch` של הניסוי: `git clone https://github.com/DanielShapi4a/coupon-wallet`, ואחריו `git switch spike/key-recovery`.
+  - מגדירים זהות `git` שמקושרת לחשבון ה־`GitHub`, בתוך התיקייה של ה־`repo`: `git config user.name "Daniel Shapira"`, ואחריו `git config user.email "116350669+DanielShapi4a@users.noreply.github.com"`.
+  - בתיקייה `spikes/key-recovery` מריצים `npm ci`. אם `npm` חוסם את ה־`postinstall` של `react-native-libsodium`, מאשרים אותו עם `npm install-scripts approve react-native-libsodium`, ומריצים `npm rebuild react-native-libsodium`.
+  - מתחברים ל־`Expo` עם `npx eas-cli login`.
 - **כשצריך הקשר:** [docs/README.md](docs/README.md) מפנה לכל המסמכים. כל ההחלטות נמצאות ב־[docs/decision-log.md](docs/decision-log.md).
 - **בסוף כל סשן:** מעדכנים את המסמך הזה.
 
@@ -27,7 +32,13 @@
 - **ניסוי טכני 01, בביצוע:**
   - **איפה:** ב־`branch` בשם `spike/key-recovery`.
   - **התוכנית והשלבים:** `docs/spikes/spike-01-key-recovery.md`, באותו `branch`.
-  - **השלב הבא:** התחברות ל־`Expo` ובנייה ב־`EAS`, שהמשתמש מבצע.
+  - **מה כבר נעשה:**
+    - הבנייה הראשונה ב־`EAS` הצליחה, וקובץ ה־`APK` מותקן בטלפון.
+    - נפתח `repo` בשם `danielshapi4a.github.io`, שיחזיק את `assetlinks.json`.
+  - **השלב הבא, במחשב האישי:**
+    - מריצים `npx expo start --tunnel` בתיקייה `spikes/key-recovery`, ומחברים את הטלפון.
+    - בודקים את כפתורים 1, 2a ו־2b.
+    - מוציאים את ה־`SHA-256` של מפתח החתימה בעזרת `npx eas-cli credentials -p android`, ומפרסמים את `assetlinks.json`.
   - קוד זמני, שנזרק אחרי הבדיקה. מה בודקים:
   - `passkey` עם הרחבת `PRF`. זה המועמד הראשון לשחזור.
   - `Block Store`: שחזור אמיתי, והתקנה מחדש באותו טלפון.
