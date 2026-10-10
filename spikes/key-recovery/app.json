@@ -25,6 +25,12 @@
     "plugins": [
       "expo-secure-store",
       "react-native-libsodium"
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "53efd1e9-018a-4fa1-9454-1ef72d5d7e6c"
+      }
+    },
+    "owner": "danielshapi4a"
   }
 }
