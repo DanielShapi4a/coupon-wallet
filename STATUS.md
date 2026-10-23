@@ -1,18 +1,18 @@
 # סטטוס הפרויקט
 
 - **עודכן:** 2026-10-23.
-- **השלב:** ניסוי טכני 01. השאלות המרכזיות נענו, והשחזור יהיה דרך `passkey` עם `PRF` (החלטה 034).
+- **השלב:** ניסוי טכני 01 הסתיים. השחזור יהיה דרך `passkey` עם `PRF` (החלטה 034).
 
 ## איך ממשיכים מכאן
 
 - **קודם כול:** קוראים את המסמך הזה.
 - **במחשב חדש, פעם אחת:**
-  - משכפלים את ה־`repo` לנתיב קצר ועוברים ל־`branch` של הניסוי: `git clone https://github.com/DanielShapi4a/coupon-wallet C:\git\coupon-wallet`, ואחריו `git switch spike/key-recovery`.
+  - משכפלים את ה־`repo` לנתיב קצר: `git clone https://github.com/DanielShapi4a/coupon-wallet C:\git\coupon-wallet`. כדי להריץ את אפליקציית הניסוי, עוברים ל־`branch` שלו עם `git switch spike/key-recovery`.
   - **נתיב קצר:** בנתיב ארוך מדי, השכפול נכשל עם `'$GIT_DIR' too big` (נבדק ב־2026-10-23).
   - מגדירים זהות `git` שמקושרת לחשבון ה־`GitHub`, בתוך התיקייה של ה־`repo`: `git config user.name "Daniel Shapira"`, ואחריו `git config user.email "116350669+DanielShapi4a@users.noreply.github.com"`.
   - בתיקייה `spikes/key-recovery` מריצים `npm ci`. ה־`postinstall` של `react-native-libsodium` רץ בלי אישור ידני, בזכות `allowScripts` ב־`package.json` (נבדק ב־2026-10-23). אם הוא בכל זאת נחסם: `npm install-scripts approve react-native-libsodium`, ואחריו `npm rebuild react-native-libsodium`.
   - מתחברים ל־`Expo` עם `npx eas-cli login`.
-- **הרצה:** בתיקייה `spikes/key-recovery` מריצים `npx expo start --tunnel`, ומחברים את הטלפון עם קוד ה־`QR`. בפעם הראשונה מאשרים התקנה גלובלית של `@expo/ngrok`.
+- **הרצה של אפליקציית הניסוי:** ב־`branch` של הניסוי, בתיקייה `spikes/key-recovery`, מריצים `npx expo start --tunnel`, ומחברים את הטלפון עם קוד ה־`QR`. בפעם הראשונה מאשרים התקנה גלובלית של `@expo/ngrok`.
 - **כשצריך הקשר:** [docs/README.md](docs/README.md) מפנה לכל המסמכים. כל ההחלטות נמצאות ב־[docs/decision-log.md](docs/decision-log.md).
 - **בסוף כל סשן:** מעדכנים את המסמך הזה.
 
@@ -27,7 +27,7 @@
 - **`ADR-001`, ניהול מפתחות:** מקובל, גרסה 4. השחזור דרך `passkey` עם `PRF` (החלטה 034).
 - **ארכיטקטורה:** כולל סקירה ספקנית, שששת התיקונים שלה אושרו (החלטה 033).
 - **יומן ההחלטות:** 34 החלטות.
-- **ניסוי טכני 01** (2026-10-23), הפרטים ב־`docs/spikes/spike-01-key-recovery.md`:
+- **ניסוי טכני 01, הסתיים** (2026-10-23). הפרטים ב־`docs/spikes/spike-01-key-recovery.md`, והקוד ב־`branch` בשם `spike/key-recovery`:
   - ‏`react-native-libsodium` עובד ב־`Expo` על `Android`.
   - ‏`expo-secure-store` לא שורד הסרה של האפליקציה.
   - ‏`passkey` עם `PRF` נותן אותו פלט אחרי התקנה מחדש, בטלפון שני אחרי סנכרון, ובאישור עם `QR` מטלפון אחר.
@@ -36,12 +36,9 @@
 
 ## הצעדים הבאים
 
-- **לסגור את ניסוי 01:**
-  - להעביר ל־`main` את המסמכים: יומן ההחלטות, `ADR-001`, המסמך הזה ומסמך הניסוי. הקוד ב־`spikes/key-recovery` נשאר ב־`branch`, ולא עובר.
-  - בדיקות שנשארו, לפי הצורך: חשבון `Google` באפליקציה שונה מהחשבון שבטלפון, מחיקה של ה־`passkey`, וחישוב `PRF` כבר ביצירה.
-- **להכריע בשאלות הפתוחות מהחלטה 034:** עטיפה שנייה, ודומיין למוצר.
+- **`threat-model.md`, בשיטת `STRIDE`:** דרכו מכריעים בשאלות הפתוחות מהחלטה 034, עטיפה שנייה ודומיין למוצר. הניסוי הראה שמחיקה אחת של ה־`passkey` מוחקת אותו מכל המכשירים, ואחריה אין שחזור.
+- **בדיקות שנשארו מניסוי 01, לפי הצורך:** חשבון `Google` באפליקציה שונה מהחשבון שבטלפון, וחישוב `PRF` כבר ביצירה.
 - **ניסוי 02:** התראות `FCM` בלי תוכן, לפני שמממשים את התזכורות.
-- **`threat-model.md`:** בשיטת `STRIDE`.
 - **`ADR-002`:** פרטי הטכנולוגיה.
 - **`ADR-003`:** אירוח. `AWS` הוא המועמד הטבעי (החלטה 032).
 - **אחר כך:** תכנון המימוש.
