@@ -1,6 +1,6 @@
 # ארכיטקטורה: שלב 1
 
-- **עודכן:** 2026-10-10.
+- **עודכן:** 2026-10-23. השחזור עודכן ל־`passkey` עם `PRF` (החלטה 034).
 - **מצב:** טיוטה ראשונה.
 - **מסמכים קשורים:** [prd.md](prd.md), [domain-model.md](domain-model.md), [ADR-001](adr/ADR-001-key-management.md), [decision-log.md](decision-log.md).
 
@@ -23,7 +23,7 @@
 Coupon Wallet (stage 1)
 ├── Mobile app (Expo, React Native, TypeScript)
 │   ├── Auth: Google Sign-In, app lock (device auth or 4-digit app PIN)
-│   ├── Vault: crypto module, Keystore, Block Store
+│   ├── Vault: crypto module, Keystore, passkey with PRF
 │   ├── Capture: share target, parser, manual form
 │   ├── Wallet: list, derived states, totals
 │   ├── Redeem: offline code screen, return prompt
@@ -44,7 +44,7 @@ Coupon Wallet (stage 1)
 │
 ├── External services
 │   ├── Google Sign-In
-│   ├── Google Block Store (end-to-end encrypted backup)
+│   ├── Google Password Manager (passkey, end-to-end encrypted sync)
 │   ├── Firebase Cloud Messaging
 │   └── Crash reporting (scrubbed)
 │
@@ -52,6 +52,7 @@ Coupon Wallet (stage 1)
     ├── CI: unit tests, parser fixtures, simulated months, canary-code check
     ├── EAS Build → Google Play internal testing
     ├── Container hosting + managed PostgreSQL (provider: ADR-003)
+    ├── Product domain: public assetlinks.json (passkey RP ID)
     └── Monitoring & alerts: API errors, sweep ran, push failures
 ```
 
@@ -75,7 +76,8 @@ flowchart LR
     end
     pg[("PostgreSQL<br/>metadata + ciphertext")]
     gsi["Google Sign-In"]
-    bs["Block Store<br/>recovery key"]
+    gpm["Google Password Manager<br/>passkey with PRF"]
+    site["Product domain<br/>assetlinks.json"]
     fcm["FCM"]
     crash["Crash reporting<br/>scrubbed"]
     inbox -- "share" --> app
@@ -84,7 +86,8 @@ flowchart LR
     app --- ks
     app -- "open link" --> issuer
     app -- "sign in" --> gsi
-    app -- "back up key" --> bs
+    app -- "passkey, PRF" --> gpm
+    gpm -. "checks app is allowed" .-> site
     app -- "HTTPS, outbox sync" --> api
     api --> pg
     worker --> pg
@@ -176,7 +179,10 @@ sequenceDiagram
 
 ### שחזור בטלפון חדש
 
-הזרימה מתוארת ב־[ADR-001](adr/ADR-001-key-management.md).
+הזרימה מתוארת ב־[ADR-001](adr/ADR-001-key-management.md). בקצרה: מתחברים בטלפון לחשבון `Google`, וה־`passkey` שמסתנכרן אליו פותח את הכספת. אין צורך לשחזר את כל הטלפון מגיבוי (החלטה 034).
+
+- **הדומיין של המוצר:** משמש `RP ID` ל־`passkey`. בשורש שלו מתפרסם קובץ ציבורי בשם `assetlinks.json`, שמאשר לאפליקציה להשתמש בדומיין.
+- **הרשאת הכתיבה לדומיין רגישה:** מי שיכול לשנות את הקובץ יכול לאשר אפליקציה אחרת. לכן מגינים על הרשאת הכתיבה לאתר.
 
 ## סנכרון עם כותב יחיד
 
@@ -267,6 +273,10 @@ sequenceDiagram
   - להקדים את הניסוי, לפני `ADR-002` ו־`ADR-003`.
   - להכין תוכנית חלופית: לשמור את מפתח השחזור במנהל הסיסמאות של `Google`, דרך `Credential Manager`. זו לחיצה אחת על "שמור", ועדיין לא צריך לזכור כלום.
 - **לבדוק גם:** מה קורה כשמסירים את האפליקציה ומתקינים אותה מחדש באותו טלפון. המפתח ב־`Keystore` נמחק בהסרה, והשאלה היא אם `Block Store` שורד אותה (לאימות).
+- **מה קרה בפועל (2026-10-23):**
+  - הניסוי הוקדם ונערך. המפתח ב־`Keystore` אכן נמחק בהסרה.
+  - ‏`passkey` עם `PRF` עבר, ולכן לא היה צורך ב־`Block Store` או בתוכנית החלופית (החלטה 034).
+  - הפרטים ב־`docs/spikes/spike-01-key-recovery.md`.
 
 ### ממצא 4, קל: סריקה שלא רצה מאבדת תזכורות
 
@@ -305,10 +315,11 @@ sequenceDiagram
   - מודולים של `Expo`.
   - `framework` לשרת.
   - גישה למסד הנתונים.
-  - ספריית ההצפנה.
+  - ספריית ההצפנה. ‏`react-native-libsodium` כבר נבדקה ועבדה בניסוי 01.
 - **`ADR-003`, ספק ענן ואירוח.**
 - **`ADR-004`:** הפרוטוקול של הסנכרון וה־`fencing`, אם יתברר שהם מורכבים מכפי שמתואר כאן.
 
 ## שאלות פתוחות
 
-- **התנגשות בין חשבונות:** מה קורה כשמשתמש מתחבר לאפליקציה עם חשבון `Google` אחר מזה שמגבה את הטלפון? צריך לבדוק את זה בניסוי הטכני של `Block Store`.
+- **התנגשות בין חשבונות:** מה קורה כשמשתמש מתחבר לאפליקציה עם חשבון `Google` אחר מזה שה־`passkey` שמור בו? זה לא נבדק בניסוי 01.
+- **עטיפה שנייה למפתח הכספת, ודומיין למוצר:** שתי שאלות פתוחות מהחלטה 034. הפרטים ביומן ההחלטות.
