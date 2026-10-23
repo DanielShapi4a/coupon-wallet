@@ -1,16 +1,18 @@
 # סטטוס הפרויקט
 
-- **עודכן:** 2026-10-10.
-- **השלב:** הניסוי הטכני 01 בביצוע.
+- **עודכן:** 2026-10-23.
+- **השלב:** ניסוי טכני 01 הסתיים. השחזור יהיה דרך `passkey` עם `PRF` (החלטה 034).
 
 ## איך ממשיכים מכאן
 
 - **קודם כול:** קוראים את המסמך הזה.
 - **במחשב חדש, פעם אחת:**
-  - משכפלים את ה־`repo` ועוברים ל־`branch` של הניסוי: `git clone https://github.com/DanielShapi4a/coupon-wallet`, ואחריו `git switch spike/key-recovery`.
+  - משכפלים את ה־`repo` לנתיב קצר: `git clone https://github.com/DanielShapi4a/coupon-wallet C:\git\coupon-wallet`. כדי להריץ את אפליקציית הניסוי, עוברים ל־`branch` שלו עם `git switch spike/key-recovery`.
+  - **נתיב קצר:** בנתיב ארוך מדי, השכפול נכשל עם `'$GIT_DIR' too big` (נבדק ב־2026-10-23).
   - מגדירים זהות `git` שמקושרת לחשבון ה־`GitHub`, בתוך התיקייה של ה־`repo`: `git config user.name "Daniel Shapira"`, ואחריו `git config user.email "116350669+DanielShapi4a@users.noreply.github.com"`.
-  - בתיקייה `spikes/key-recovery` מריצים `npm ci`. אם `npm` חוסם את ה־`postinstall` של `react-native-libsodium`, מאשרים אותו עם `npm install-scripts approve react-native-libsodium`, ומריצים `npm rebuild react-native-libsodium`.
+  - בתיקייה `spikes/key-recovery` מריצים `npm ci`. ה־`postinstall` של `react-native-libsodium` רץ בלי אישור ידני, בזכות `allowScripts` ב־`package.json` (נבדק ב־2026-10-23). אם הוא בכל זאת נחסם: `npm install-scripts approve react-native-libsodium`, ואחריו `npm rebuild react-native-libsodium`.
   - מתחברים ל־`Expo` עם `npx eas-cli login`.
+- **הרצה של אפליקציית הניסוי:** ב־`branch` של הניסוי, בתיקייה `spikes/key-recovery`, מריצים `npx expo start --tunnel`, ומחברים את הטלפון עם קוד ה־`QR`. בפעם הראשונה מאשרים התקנה גלובלית של `@expo/ngrok`.
 - **כשצריך הקשר:** [docs/README.md](docs/README.md) מפנה לכל המסמכים. כל ההחלטות נמצאות ב־[docs/decision-log.md](docs/decision-log.md).
 - **בסוף כל סשן:** מעדכנים את המסמך הזה.
 
@@ -22,40 +24,31 @@
   - ניתוח מתחרים.
   - מודל `domain`.
 - **`PRD` לשלב 1:** גרסת הבודקים.
-- **`ADR-001`, ניהול מפתחות:** מקובל בכפוף לניסוי הטכני.
+- **`ADR-001`, ניהול מפתחות:** מקובל, גרסה 4. השחזור דרך `passkey` עם `PRF` (החלטה 034).
 - **ארכיטקטורה:** כולל סקירה ספקנית, שששת התיקונים שלה אושרו (החלטה 033).
-- **יומן ההחלטות:** 33 החלטות.
+- **יומן ההחלטות:** 34 החלטות.
+- **ניסוי טכני 01, הסתיים** (2026-10-23). הפרטים ב־`docs/spikes/spike-01-key-recovery.md`, והקוד ב־`branch` בשם `spike/key-recovery`:
+  - ‏`react-native-libsodium` עובד ב־`Expo` על `Android`.
+  - ‏`expo-secure-store` לא שורד הסרה של האפליקציה.
+  - ‏`passkey` עם `PRF` נותן אותו פלט אחרי התקנה מחדש, בטלפון שני אחרי סנכרון, ובאישור עם `QR` מטלפון אחר.
+  - ‏`assetlinks.json` פורסם ב־`https://danielshapi4a.github.io/.well-known/assetlinks.json`, מתוך ה־`repo` בשם `danielshapi4a.github.io`. ה־`repo` חייב להישאר ציבורי.
 - **`repo`:** https://github.com/DanielShapi4a/coupon-wallet. במחשב הזה הוא נמצא ב־`C:\git\coupon-wallet`.
 
 ## הצעדים הבאים
 
-- **ניסוי טכני 01, בביצוע:**
-  - **איפה:** ב־`branch` בשם `spike/key-recovery`.
-  - **התוכנית והשלבים:** `docs/spikes/spike-01-key-recovery.md`, באותו `branch`.
-  - **מה כבר נעשה:**
-    - הבנייה הראשונה ב־`EAS` הצליחה, וקובץ ה־`APK` מותקן בטלפון.
-    - נפתח `repo` בשם `danielshapi4a.github.io`, שיחזיק את `assetlinks.json`.
-  - **השלב הבא, במחשב האישי:**
-    - מריצים `npx expo start --tunnel` בתיקייה `spikes/key-recovery`, ומחברים את הטלפון.
-    - בודקים את כפתורים 1, 2a ו־2b.
-    - מוציאים את ה־`SHA-256` של מפתח החתימה בעזרת `npx eas-cli credentials -p android`, ומפרסמים את `assetlinks.json`.
-  - קוד זמני, שנזרק אחרי הבדיקה. מה בודקים:
-  - `passkey` עם הרחבת `PRF`. זה המועמד הראשון לשחזור.
-  - `Block Store`: שחזור אמיתי, והתקנה מחדש באותו טלפון.
-  - ספרייה של `libsodium` שעובדת עם `Expo`.
-  - התראות `FCM` בלי תוכן.
-  - מה קורה כשמתחברים לאפליקציה עם חשבון `Google` אחר מזה שמגבה את הטלפון.
-  - **מה צריך:** טלפון `Android`, וטלפון שני לבדיקת שחזור.
-- **`threat-model.md`:** בשיטת `STRIDE`.
+- **`threat-model.md`, בשיטת `STRIDE`:** דרכו מכריעים בשאלות הפתוחות מהחלטה 034, עטיפה שנייה ודומיין למוצר. הניסוי הראה שמחיקה אחת של ה־`passkey` מוחקת אותו מכל המכשירים, ואחריה אין שחזור.
+- **בדיקות שנשארו מניסוי 01, לפי הצורך:** חשבון `Google` באפליקציה שונה מהחשבון שבטלפון, וחישוב `PRF` כבר ביצירה.
+- **ניסוי 02:** התראות `FCM` בלי תוכן, לפני שמממשים את התזכורות.
 - **`ADR-002`:** פרטי הטכנולוגיה.
 - **`ADR-003`:** אירוח. `AWS` הוא המועמד הטבעי (החלטה 032).
 - **אחר כך:** תכנון המימוש.
 
 ## שאלות פתוחות
 
-- **שחזור:** `passkey` או `Block Store`. הניסוי יכריע, וההעדפה היא `passkey` אם הוא עובד.
+- **עטיפה שנייה למפתח הכספת:** יש מחלוקת בין אבטחה לבין מוצר ו־`DevOps`. הפרטים ביומן ההחלטות.
+- **דומיין למוצר:** כדאי לבחור אותו לפני שהבודקים יוצרים `passkey`.
 - **שם האפליקציה.**
-- **גרסת `Android` המינימלית:** תיקבע ב־`ADR`.
+- **גרסת `Android` המינימלית:** תיקבע ב־`ADR`. בניסוי, טלפון שני ישן החזיר `Device ineligible` כשהחשבון לא היה מחובר בו.
 - **מודל הכנסה:** בהמשך.
 
 ## עובדות שכדאי לזכור
@@ -64,4 +57,6 @@
 - **עדיפויות של המשתמש:**
   - פשטות למשתמש הקצה, ושום דבר חדש לזכור (החלטה 029).
   - שירותים גדולים ומנוהלים (החלטה 032).
+- **אפליקציית הניסוי:** היא `development build`. שינויים ב־`JavaScript` לא דורשים בנייה מחדש. הבנייה היחידה ב־`EAS` היא מ־2026-10-10.
+- **טלפון שני:** זמין לבדיקות שחזור.
 - **אופן העבודה:** מתואר ב־[CLAUDE.md](CLAUDE.md).
