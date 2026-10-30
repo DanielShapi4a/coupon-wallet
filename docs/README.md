@@ -19,5 +19,6 @@
 - **[prd.md](prd.md):** הדרישות לשלב 1, כולל מזהים לכל דרישה.
 - **[architecture.md](architecture.md):** הרכיבים, זרימת המידע הרגיש, הזרימות המרכזיות והסקירה הספקנית.
 - **[adr/ADR-001-key-management.md](adr/ADR-001-key-management.md):** ניהול מפתחות והצפנה.
+- **[threat-model.md](threat-model.md):** מודל האיומים בשיטת `STRIDE`, והסיכונים שמקבלים בשלב 1.
 - **[spikes/spike-01-key-recovery.md](spikes/spike-01-key-recovery.md):** ניסוי טכני 01, שחזור מפתחות. התוכנית, יומן ההתקדמות והתוצאות. הקוד נשאר ב־`branch` בשם `spike/key-recovery`.
 - **[decision-log.md](decision-log.md):** כל ההחלטות, לפי הסדר.
