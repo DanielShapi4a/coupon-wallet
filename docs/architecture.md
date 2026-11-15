@@ -51,7 +51,7 @@ Coupon Wallet (stage 1)
 └── Delivery & operations
     ├── CI: unit tests, parser fixtures, simulated months, canary-code check
     ├── EAS Build → Google Play internal testing
-    ├── Container hosting + managed PostgreSQL (provider: ADR-003)
+    ├── AWS eu-central-1: ECS Fargate + RDS PostgreSQL (ADR-003; $0 until launch)
     ├── Product domain: public assetlinks.json (passkey RP ID)
     └── Monitoring & alerts: API errors, sweep ran, push failures
 ```
@@ -222,8 +222,8 @@ sequenceDiagram
   - `image` אחד, שרץ על שירות שמריץ `containers`.
   - `PostgreSQL` מנוהל, עם גיבוי יומי.
   - הסריקה היומית מופעלת על ידי מתזמן של הספק.
-- **הספק:**
-  - נבחר ב־`ADR-003`.
+- **הספק:** ‏`AWS` בפרנקפורט (`ADR-003`, החלטה 039).
+  - בפיתוח הכול מקומי, ב־`Docker Compose`. אצל הבודקים, חשבון `AWS` בתוכנית החינמית. רק אחרי הפרסום משלמים.
   - בגלל `Docker`, אפשר לעבור לספק אחר בלי לשנות את הקוד.
 - **סביבות:** בשלב 1 יש שתיים בלבד. סביבה מקומית לפיתוח, וסביבה אחת שבה הבודקים עובדים.
 
@@ -307,12 +307,12 @@ sequenceDiagram
 - **אין רכיב מיותר:**
   - `modular monolith`, `outbox`, `fencing` ומשתמש מסד נתונים לקריאה בלבד הם כולם בגודל המתאים.
   - כל רכיב נשען על דרישה עם מזהה, ואף אחד מהם לא נבנה "ליתר ביטחון".
-- **עלות (הערכה):** כמה עשרות דולרים בחודש, עבור שירותים מנוהלים אצל ספק ענן גדול. העלות תפורט ב־`ADR-003`.
+- **עלות (הערכה):** ‏$0 עד הפרסום, ואחריו כ־$29 לחודש. הפירוט ב־[ADR-003](adr/ADR-003-hosting.md).
 
 ## `ADR` שצפויים בהמשך
 
 - **`ADR-002`, פרטי הטכנולוגיה:** נכתב (2026-11-15). ראו [ADR-002](adr/ADR-002-technology.md).
-- **`ADR-003`, ספק ענן ואירוח.**
+- **`ADR-003`, ספק ענן ואירוח:** נכתב (2026-11-15). ראו [ADR-003](adr/ADR-003-hosting.md).
 - **`ADR-004`:** הפרוטוקול של הסנכרון וה־`fencing`, אם יתברר שהם מורכבים מכפי שמתואר כאן.
 
 ## שאלות פתוחות
