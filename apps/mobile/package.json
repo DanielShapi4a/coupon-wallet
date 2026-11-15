@@ -1,0 +1,30 @@
+{
+  "name": "@cw/mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --tunnel",
+    "typecheck": "tsc -p ."
+  },
+  "dependencies": {
+    "@cw/shared": "*",
+    "expo": "~57.0.33",
+    "expo-constants": "~57.0.24",
+    "expo-dev-client": "~57.0.21",
+    "expo-linking": "~57.0.14",
+    "expo-router": "~57.0.31",
+    "expo-secure-store": "~57.0.4",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-libsodium": "^1.7.0",
+    "react-native-passkeys": "^0.4.2",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "~4.26.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.2.2",
+    "typescript": "~6.0.3"
+  }
+}
