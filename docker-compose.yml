@@ -1,0 +1,40 @@
+# Stage A from ADR-003: local development only. The credentials here never leave this machine.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: cw
+      POSTGRES_PASSWORD: cw
+      POSTGRES_DB: cw
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cw"]
+      interval: 2s
+      retries: 15
+
+  api:
+    build: .
+    environment:
+      DATABASE_URL: postgres://cw:cw@db:5432/cw
+    ports:
+      - "127.0.0.1:3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Run on demand: docker compose run --rm worker
+  worker:
+    build: .
+    command: ["node", "src/index.ts", "worker"]
+    environment:
+      DATABASE_URL: postgres://cw:cw@db:5432/cw
+    depends_on:
+      db:
+        condition: service_healthy
+    profiles: ["worker"]
+
+volumes:
+  db-data:

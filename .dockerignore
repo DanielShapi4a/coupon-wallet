@@ -1,0 +1,7 @@
+**/node_modules
+.git
+.github
+docs
+apps/mobile
+graphify-out
+*.log
