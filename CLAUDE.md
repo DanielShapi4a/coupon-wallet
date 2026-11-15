@@ -56,11 +56,19 @@
 
 - **`repo` פרטי:** https://github.com/DanielShapi4a/coupon-wallet.
 - **ה־`branches`:**
-  - `main` מחזיק את המסמכים, ההחלטות ו־`STATUS.md`.
+  - `main` מחזיק את המסמכים, ההחלטות, `STATUS.md` ואת קוד המוצר (`ADR-002`).
   - ‏`spike/*` מחזיק קוד זמני של ניסויים. הוא לא מתמזג ל־`main`. רק המסמך והמסקנות עוברים.
 - **זהות:** בכל מחשב מגדירים זהות `git` מקומית ל־`repo`, כדי ש־`GitHub` יזהה את הכותב. הפקודות נמצאות ב־`STATUS.md`.
 - **ייחוס:** כל `commit` שנכתב בעזרת `Claude` מסתיים בשורת `Co-Authored-By`.
 - **העלאה:** מעלים בסוף כל יחידת עבודה. ‏`STATUS.md` מתעדכן ב־`main`, כדי שהמחשב השני ימשיך מאותה נקודה.
+
+### הקוד
+
+- **מבנה:** `npm workspaces`, עם `apps/mobile`, `apps/server` ו־`packages/shared` (`ADR-002`).
+- **בדיקות:** `npm run typecheck` ו־`npm test` מהשורש. ה־`CI` ב־`GitHub Actions` מריץ את שתיהן בכל `push`.
+- **שרת מקומי:** `docker compose up -d --build` מריץ את `PostgreSQL` ואת ה־`api` (שלב א' ב־`ADR-003`). ‏`/health` ב־`http://127.0.0.1:3000`.
+- **השרת רץ על `TypeScript` ישירות,** בעזרת התמיכה המובנית של `Node.js 24`, בלי שלב בנייה. לכן מייבאים קבצים עם הסיומת `.ts`.
+- **`Graphify`:** הגרף של הפרויקט נבנה ב־`graphify-out/`, שלא נכנס ל־`git`.
 
 ### האפליקציה והניסויים
 

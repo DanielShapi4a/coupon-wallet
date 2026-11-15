@@ -1,22 +1,45 @@
 # סטטוס הפרויקט
 
 - **עודכן:** 2026-11-15.
-- **השלב:** ‏`ADR-002` ו־`ADR-003` נכתבו, ונרשמו החלטות 038 ו־039. שלב התכנון הסתיים, והצעד הבא הוא שלד הקוד.
+- **השלב:** שלד הקוד הוקם ב־`main`, ורץ מקומית. הצעד הבא הוא בנייה ראשונה של האפליקציה ב־`EAS`, ובדיקה בטלפון.
 
 ## איך ממשיכים מכאן
 
 - **קודם כול:** קוראים את המסמך הזה.
 - **במחשב חדש, פעם אחת:**
-  - משכפלים את ה־`repo` לנתיב קצר: `git clone https://github.com/DanielShapi4a/coupon-wallet C:\git\coupon-wallet`. כדי להריץ את אפליקציית הניסוי, עוברים ל־`branch` שלו עם `git switch spike/key-recovery`.
+  - משכפלים את ה־`repo` לנתיב קצר: `git clone https://github.com/DanielShapi4a/coupon-wallet C:\git\coupon-wallet`.
   - **נתיב קצר:** בנתיב ארוך מדי, השכפול נכשל עם `'$GIT_DIR' too big` (נבדק ב־2026-10-23).
   - מגדירים זהות `git` שמקושרת לחשבון ה־`GitHub`, בתוך התיקייה של ה־`repo`: `git config user.name "Daniel Shapira"`, ואחריו `git config user.email "116350669+DanielShapi4a@users.noreply.github.com"`.
-  - בתיקייה `spikes/key-recovery` מריצים `npm ci`. ה־`postinstall` של `react-native-libsodium` רץ בלי אישור ידני, בזכות `allowScripts` ב־`package.json` (נבדק ב־2026-10-23). אם הוא בכל זאת נחסם: `npm install-scripts approve react-native-libsodium`, ואחריו `npm rebuild react-native-libsodium`.
+  - בשורש ה־`repo` מריצים `npm ci`. ה־`postinstall` של `react-native-libsodium` מאושר ב־`allowScripts` ב־`package.json` שבשורש. אם הוא בכל זאת נחסם: `npm install-scripts approve react-native-libsodium`, ואחריו `npm rebuild react-native-libsodium`.
   - מתחברים ל־`Expo` עם `npx eas-cli login`.
-- **הרצה של אפליקציית הניסוי:** ב־`branch` של הניסוי, בתיקייה `spikes/key-recovery`, מריצים `npx expo start --tunnel`, ומחברים את הטלפון עם קוד ה־`QR`. בפעם הראשונה מאשרים התקנה גלובלית של `@expo/ngrok`.
+- **בדיקות:** `npm run typecheck` ו־`npm test`, מהשורש.
+- **שרת מקומי:** `docker compose up -d --build`. אחר כך `http://127.0.0.1:3000/health` מחזיר `{"ok":true,"db":"up"}`.
+- **אפליקציה:** בתיקייה `apps/mobile` מעתיקים את `.env.example` ל־`.env`, ומריצים `npm start`.
+- **אפליקציית הניסוי הישנה:** ב־`branch` בשם `spike/key-recovery`, בתיקייה `spikes/key-recovery`.
 - **כשצריך הקשר:** [docs/README.md](docs/README.md) מפנה לכל המסמכים. כל ההחלטות נמצאות ב־[docs/decision-log.md](docs/decision-log.md).
 - **בסוף כל סשן:** מעדכנים את המסמך הזה.
 
-## איפה עצרנו (2026-11-15)
+## איפה עצרנו (2026-11-15, שלד הקוד)
+
+- **שלד הקוד ב־`main`, שעובד מקומית:**
+  - **`packages/shared`:** סכמת `zod` לבדיקת התקינות, ופונקציית ה־`AAD` מ־`ADR-001`, עם בדיקות.
+  - **`apps/server`:** ‏`Fastify` עם `/health`, ‏`Kysely` עם מיגרציה ראשונה (טבלת `users`), והגדרות שנבדקות עם `zod`.
+  - **`Dockerfile` אחד** שרץ כ־`api` או כ־`worker`, ו־`docker-compose.yml` עם `PostgreSQL 17`.
+  - **`apps/mobile`:** ‏`Expo SDK 57` עם `expo-router` והספריות מניסוי 01, ומסך אחד שבודק את החיבור לשרת.
+  - **`CI`:** ‏`typecheck` ובדיקות בכל `push`.
+- **מה נבדק במחשב הזה:**
+  - ‏`typecheck` עובר בשלוש החבילות, ו־5 בדיקות עוברות.
+  - ב־`Docker`, המיגרציה רצה, ו־`/health` מחזיר 200 כשמסד הנתונים פעיל, ו־503 כשהוא כבוי.
+  - ‏`expo export` לאנדרואיד עובר, כלומר `Metro` מוצא את `@cw/shared`.
+- **מה עוד לא נבדק:** האפליקציה בטלפון. זה דורש בנייה חדשה ב־`EAS` ומנהרה לשרת המקומי.
+- **מזהה האפליקציה:** בינתיים `io.github.danielshapi4a.couponwallet.dev`. המזהה הסופי נבחר יחד עם הדומיין, לפני הבודק הראשון (החלטה 036).
+- **`Expo SDK 58` כבר יצא.** נשארנו ב־57, שבו נבדקו הספריות. כדאי לשדרג בהמשך, אחרי שבודקים את התאימות שלהן.
+- **הצעד הבא:**
+  - `npx eas-cli init` בתיקייה `apps/mobile`, ובנייה ראשונה עם `npx eas-cli build --profile development --platform android`.
+  - מנהרה לשרת המקומי, ובדיקה שהמסך מציג "Connected to the server".
+  - אחר כך מודול ההצפנה, לפי `ADR-001`.
+
+## איפה עצרנו קודם (2026-11-15, תכנון)
 
 - **`ADR-002` נכתב:** ‏`Expo SDK 57` עם הספריות מניסוי 01, ‏`Node.js 24 LTS` עם `Fastify` ו־`zod`, ‏`Kysely` ל־`PostgreSQL`, ו־`repo` אחד עם `npm workspaces` (החלטה 038).
 - **הקוד ייכנס ל־`main`,** בתיקיות `apps/mobile`, `apps/server` ו־`packages/shared`.
@@ -25,7 +48,7 @@
   - **שלב ב', הבודקים:** חשבון `AWS` בתוכנית החינמית, עם הקרדיטים, עד 6 חודשים. כדאי להתחיל אותו קרוב לפרסום.
   - **שלב ג', אחרי הפרסום:** כ־$29 לחודש.
 - **במחשב הזה:** הוסר `Serena`, והותקן `Graphify` לכל המחשב, עם גרף נפרד לכל פרויקט. המדיניות כתובה ב־`CLAUDE.md` הגלובלי.
-- **הצעד הבא:** שלד הקוד. ‏`npm workspaces` לפי `ADR-002`, ‏`Docker Compose` לשרת ול־`PostgreSQL` לפי שלב א' ב־`ADR-003`, והעברת מה שנבדק בניסוי 01.
+- **הצעד שאחריו היה שלד הקוד,** והוא הושלם.
 
 ## איפה עצרנו קודם (2026-10-30)
 
@@ -59,7 +82,8 @@
 
 ## הצעדים הבאים
 
-- **שלד הקוד:** ‏`workspaces`, ‏`Docker Compose`, והעברת מה שנבדק בניסוי 01.
+- **שלד הקוד:** הוקם. נשארה בנייה ראשונה ב־`EAS` ובדיקה בטלפון.
+- **מודול ההצפנה:** לפי `ADR-001`, עם הבדיקות שה־`ADR` דורש.
 - **לפני שלב ב' באירוח:** לאמת את התוכנית החינמית של `AWS` ואת הסכם עיבוד הנתונים, ולהוסיף ל־`threat-model.md` סעיף משפטי קצר.
 - **ניסוי 02:** התראות `FCM` בלי תוכן, לפני שמממשים את התזכורות.
 - **בדיקות שנשארו, לפי הצורך:**
