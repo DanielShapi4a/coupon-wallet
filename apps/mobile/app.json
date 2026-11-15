@@ -22,6 +22,12 @@
       "expo-secure-store",
       "react-native-libsodium"
     ],
-    "owner": "danielshapi4a"
+    "owner": "danielshapi4a",
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "e28a52f6-f7fb-45e8-8333-82d1652db151"
+      }
+    }
   }
 }
