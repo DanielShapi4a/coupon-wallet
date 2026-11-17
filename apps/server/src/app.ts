@@ -13,7 +13,7 @@ import {
 import type { Database } from './db.ts';
 import type { VerifyGoogleIdToken } from './google.ts';
 import { verifyEd25519 } from './signatures.ts';
-import { issueTokens, rotateRefreshToken, verifyAccessToken } from './tokens.ts';
+import { issueTokens, revokeRefreshToken, rotateRefreshToken, verifyAccessToken } from './tokens.ts';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const REPLACE_PASSKEY = 'replace_passkey';
@@ -28,6 +28,14 @@ export interface AppDeps {
 export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
   const { db, jwtSecret } = deps;
   const app = Fastify(options);
+
+  // Fastify's default handler returns the error's own message, which can expose internals
+  // (table names, hosts). Clients get a generic code; the details stay in the log.
+  app.setErrorHandler((err: { statusCode?: number }, req, reply) => {
+    const status = err.statusCode && err.statusCode >= 400 && err.statusCode < 500 ? err.statusCode : 500;
+    if (status >= 500) req.log.error({ err }, 'request failed');
+    return reply.code(status).send({ error: status >= 500 ? 'internal_error' : 'invalid_request' });
+  });
 
   const badRequest = (reply: FastifyReply) => reply.code(400).send({ error: 'invalid_request' });
   const unauthorized = (reply: FastifyReply) => reply.code(401).send({ error: 'unauthorized' });
@@ -73,6 +81,15 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
     if (!body.success) return badRequest(reply);
     const tokens = await rotateRefreshToken(db, body.data.refreshToken, jwtSecret);
     return tokens ?? unauthorized(reply);
+  });
+
+  // Signing out ends the session on the server too, not only on the phone.
+  // Always 204, so the response does not reveal whether the token existed.
+  app.post('/auth/logout', async (req, reply) => {
+    const body = RefreshRequest.safeParse(req.body);
+    if (!body.success) return badRequest(reply);
+    await revokeRefreshToken(db, body.data.refreshToken);
+    return reply.code(204).send();
   });
 
   app.get('/vault', async (req, reply) => {

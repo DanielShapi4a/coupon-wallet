@@ -5,6 +5,7 @@ import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { AuthTokens, Challenge, replacePasskeyMessage, type Vault } from '@cw/shared';
 import { buildApp } from './app.ts';
+import { cleanup } from './cleanup.ts';
 import { createDb, migrateToLatest, type Database } from './db.ts';
 
 // Runs against a real PostgreSQL: the local Docker Compose one, or the CI service.
@@ -242,5 +243,37 @@ describe('PUT /vault/passkey (self-repair, signed with the vault key)', () => {
     const { challengeId } = await getChallenge(accessToken);
     expect((await replace(accessToken, { challengeId, ...replacement, signature: 'A'.repeat(86) })).statusCode).toBe(404);
     expect((await replace(accessToken, { challengeId, ...replacement, signature: 'short' })).statusCode).toBe(400);
+  });
+});
+
+describe('POST /auth/logout', () => {
+  it('ends the session on the server: the refresh token stops working', async () => {
+    const { refreshToken } = await signIn('sub-1');
+    const res = await app().inject({ method: 'POST', url: '/auth/logout', payload: { refreshToken } });
+    expect(res.statusCode).toBe(204);
+    const after = await app().inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken } });
+    expect(after.statusCode).toBe(401);
+  });
+
+  it('answers 204 for an unknown token too, revealing nothing', async () => {
+    const res = await app().inject({ method: 'POST', url: '/auth/logout', payload: { refreshToken: 'unknown' } });
+    expect(res.statusCode).toBe(204);
+  });
+});
+
+describe('cleanup (worker)', () => {
+  it('removes expired refresh tokens and old challenges, and keeps live ones', async () => {
+    const live = await signIn('sub-1');
+    await signIn('sub-2');
+    await db.updateTable('refresh_tokens').set({ expires_at: new Date(Date.now() - 1000) })
+      .where('user_id', 'in', db.selectFrom('users').select('id').where('google_sub', '=', 'sub-2'))
+      .execute();
+    await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(live.accessToken), payload: {} });
+    await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(live.accessToken), payload: {} });
+    const [old] = await db.selectFrom('challenges').select('id').execute();
+    await db.updateTable('challenges').set({ expires_at: new Date(Date.now() - 2 * 60 * 60 * 1000) }).where('id', '=', old!.id).execute();
+
+    expect(await cleanup(db)).toEqual({ refreshTokens: 1, challenges: 1 });
+    expect((await app().inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken: live.refreshToken } })).statusCode).toBe(200);
   });
 });

@@ -1,5 +1,6 @@
 import { sql } from 'kysely';
 import { buildApp } from './app.ts';
+import { cleanup } from './cleanup.ts';
 import { loadConfig } from './config.ts';
 import { createDb, migrateToLatest } from './db.ts';
 import { googleIdTokenVerifier } from './google.ts';
@@ -30,7 +31,9 @@ if (role === 'api') {
   process.on('SIGINT', shutdown);
   await app.listen({ port: config.PORT, host: config.HOST });
 } else if (role === 'worker') {
-  console.log('worker: nothing to do yet, the daily sweep comes later');
+  // The reminder sweep joins this run later (after spike 02).
+  const removed = await cleanup(db);
+  console.log(`worker: cleanup removed ${removed.refreshTokens} refresh tokens and ${removed.challenges} challenges`);
   await db.destroy();
 } else {
   console.error('usage: node src/index.ts api|worker');

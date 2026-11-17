@@ -81,6 +81,16 @@ export async function rotateRefreshToken(
   return issueTokens(db, row.user_id, jwtSecret);
 }
 
+/** Sign-out: this refresh token stops working. */
+export async function revokeRefreshToken(db: Kysely<Database>, presented: string): Promise<void> {
+  await db
+    .updateTable('refresh_tokens')
+    .set({ revoked_at: new Date() })
+    .where('token_hash', '=', hash(presented))
+    .where('revoked_at', 'is', null)
+    .execute();
+}
+
 export async function revokeAllSessions(db: Kysely<Database>, userId: string): Promise<void> {
   await db
     .updateTable('refresh_tokens')

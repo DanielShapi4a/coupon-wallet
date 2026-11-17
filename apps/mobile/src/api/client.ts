@@ -49,7 +49,22 @@ export async function isSignedIn(): Promise<boolean> {
   return (await SecureStore.getItemAsync(REFRESH_TOKEN)) !== null;
 }
 
+/** Ends the session on the server too. Best effort: signing out works offline, the server copy then expires. */
 export async function signOut(): Promise<void> {
+  const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN);
+  accessToken = null;
+  await SecureStore.deleteItemAsync(REFRESH_TOKEN);
+  if (refreshToken && API_URL) {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    }).catch(() => undefined);
+  }
+}
+
+/** Drops the local session only, without telling the server (the server already ended it). */
+async function dropLocalSession(): Promise<void> {
   accessToken = null;
   await SecureStore.deleteItemAsync(REFRESH_TOKEN);
 }
@@ -59,7 +74,7 @@ async function refresh(): Promise<boolean> {
   const refreshToken = await SecureStore.getItemAsync(REFRESH_TOKEN);
   const tokens = refreshToken ? await postTokens('/auth/refresh', { refreshToken }) : null;
   if (!tokens) {
-    await signOut();
+    await dropLocalSession();
     return false;
   }
   await saveTokens(tokens);

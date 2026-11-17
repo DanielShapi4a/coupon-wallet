@@ -20,6 +20,20 @@ describe('GET /health', () => {
     expect(HealthResponse.parse(res.json())).toEqual({ ok: true, db: 'up' });
   });
 
+  it('does not expose internal error messages', async () => {
+    const app = buildApp(deps(async () => {}));
+    app.get('/boom', async () => {
+      throw new Error('relation "secret_table" does not exist at db-host-10.0.0.5');
+    });
+    const res = await app.inject({ method: 'GET', url: '/boom' });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: 'internal_error' });
+
+    const bad = await app.inject({ method: 'POST', url: '/auth/google', headers: { 'content-type': 'application/json' }, payload: '{bad' });
+    expect(bad.statusCode).toBe(400);
+    expect(bad.json()).toEqual({ error: 'invalid_request' });
+  });
+
   it('returns 503 when the database does not respond', async () => {
     const app = buildApp(
       deps(async () => {
