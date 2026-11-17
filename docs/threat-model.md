@@ -189,7 +189,7 @@ flowchart LR
 
 ## לאימות
 
-- **`prepareGetCredential`:** האם הוא מזהה בלי מסך ש־`passkey` נמחק, ואם `react-native-passkeys` חושף אותו.
+- **`prepareGetCredential`:** נבדק ב־2026-11-17. הוא מזהה בלי מסך ש־`passkey` נמחק. ‏`react-native-passkeys` לא חושף אותו, ולכן הוא במודול `credentials` שלנו.
 - **טלפון חדש:** איזה אימות נוסף `Google` דורש לפני שאפשר להשתמש ב־`passkey`.
 - **מעבר לחשבון `Google` אחר:** מה קורה בפועל.
 - **אימות דו־שלבי:** שהוא מופעל ב־`GitHub` וב־`Expo`.
