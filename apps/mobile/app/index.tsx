@@ -2,12 +2,13 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as sodium from 'react-native-libsodium';
 import { HealthResponse, selfTest } from '@cw/shared';
-import { createVault, forgetVaultKey, getVaultStatus, recoverVault, resetLocalVault } from '../src/vault/vault';
+import { isSignedIn, signIn, signOut } from '../src/api/client';
+import { createVault, forgetVaultKey, getVaultStatus, hasServerVault, recoverVault } from '../src/vault/vault';
 
 // Set in apps/mobile/.env (see .env.example). In development it is the tunnel URL of the local server.
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
-// Development screen: the server connection, the crypto self-test, and the vault flows.
+// Development screen: the server connection, the crypto self-test, sign-in and the vault flows.
 // The real screens are designed once the flows work.
 export default function Home() {
   const [status, setStatus] = useState('Checking the server…');
@@ -16,10 +17,18 @@ export default function Home() {
   const [log, setLog] = useState<string[]>([]);
 
   const refreshVault = useCallback(async () => {
-    const s = await getVaultStatus();
-    setVault(
-      `Vault key: ${s.hasVaultKey ? `present (id ${s.keyId})` : 'missing'} · wrapped copy: ${s.hasWrappedVaultKey ? 'present' : 'missing'}`,
-    );
+    try {
+      const signedIn = await isSignedIn();
+      const local = await getVaultStatus();
+      const server = signedIn ? ((await hasServerVault()) ? 'present' : 'missing') : 'sign in to check';
+      setVault(
+        `Signed in: ${signedIn ? 'yes' : 'no'}\n` +
+          `Vault key on this phone: ${local.hasVaultKey ? `present (id ${local.keyId})` : 'missing'}\n` +
+          `Vault on the server: ${server}`,
+      );
+    } catch (err) {
+      setVault(`Vault: ERROR ${String(err)}`);
+    }
   }, []);
 
   const run = (label: string, action: () => Promise<string>) => async () => {
@@ -40,7 +49,7 @@ export default function Home() {
         setCrypto(result.ok ? 'Crypto self-test: PASS' : `Crypto self-test: FAIL (${result.failed})`);
       })
       .catch((err) => setCrypto(`Crypto self-test: FAIL (${String(err)})`));
-    refreshVault().catch((err) => setVault(`Vault: ERROR ${String(err)}`));
+    refreshVault();
   }, [refreshVault]);
 
   useEffect(() => {
@@ -65,6 +74,7 @@ export default function Home() {
       <Text style={styles.heading}>Vault (development)</Text>
       <Text style={styles.text}>{vault}</Text>
       <View style={styles.buttons}>
+        <Button title="Sign in with Google" onPress={run('Sign in', async () => (await signIn(), 'OK'))} />
         <Button
           title="Create vault"
           onPress={run('Create vault', async () => {
@@ -73,14 +83,11 @@ export default function Home() {
           })}
         />
         <Button
-          title="Simulate new phone"
-          onPress={run('Simulate new phone', async () => {
-            await forgetVaultKey();
-            const r = await recoverVault();
-            return `recovered key id ${r.keyId}`;
-          })}
+          title="Recover vault"
+          onPress={run('Recover vault', async () => `recovered key id ${(await recoverVault()).keyId}`)}
         />
-        <Button title="Reset local vault" onPress={run('Reset local vault', async () => (await resetLocalVault(), 'done'))} />
+        <Button title="Forget key on this phone" onPress={run('Forget key', async () => (await forgetVaultKey(), 'done'))} />
+        <Button title="Sign out" onPress={run('Sign out', async () => (await signOut(), 'done'))} />
       </View>
       <ScrollView style={styles.log}>
         {log.map((line, i) => (

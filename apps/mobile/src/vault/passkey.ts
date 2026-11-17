@@ -17,7 +17,7 @@ type RandomBase64Url = (bytes: number) => string;
 export async function createPasskey(
   prfSalt: string,
   randomBase64Url: RandomBase64Url,
-): Promise<{ prfOutput: string | null }> {
+): Promise<{ credentialId: string; prfOutput: string | null }> {
   const result = await Passkeys.create({
     challenge: randomBase64Url(32),
     rp: { id: RP_ID, name: 'Coupon Wallet' },
@@ -32,14 +32,23 @@ export async function createPasskey(
   if (!result) throw new Error('The passkey was not created');
   const prf = result.clientExtensionResults.prf;
   if (!prf?.enabled) throw new Error('This passkey provider does not support PRF');
-  return { prfOutput: prf.results?.first ?? null };
+  return { credentialId: result.id, prfOutput: prf.results?.first ?? null };
 }
 
-/** Asks the user to confirm with the vault passkey, and returns its PRF output for the fixed salt. */
-export async function getPrfOutput(prfSalt: string, randomBase64Url: RandomBase64Url): Promise<string> {
+/**
+ * Asks the user to confirm with the vault passkey, and returns its PRF output for the fixed salt.
+ * The credential ID (kept on the server) limits the request to this vault's passkey, so Google
+ * does not offer other passkeys of the same domain.
+ */
+export async function getPrfOutput(
+  prfSalt: string,
+  randomBase64Url: RandomBase64Url,
+  credentialId: string,
+): Promise<string> {
   const result = await Passkeys.get({
     challenge: randomBase64Url(32),
     rpId: RP_ID,
+    allowCredentials: [{ type: 'public-key', id: credentialId }],
     userVerification: 'required',
     extensions: { prf: { eval: { first: prfSalt } } },
   });
