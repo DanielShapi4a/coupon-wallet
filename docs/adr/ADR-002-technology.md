@@ -1,7 +1,7 @@
 # ‏`ADR-002`: פרטי הטכנולוגיה
 
-- **סטטוס:** מקובל (2026-11-15).
-- **החלטות קשורות:** 005, 022, 028, 030, 032, 033, 035, 037, 038.
+- **סטטוס:** מקובל (2026-11-15). עודכן ב־2026-11-17: התחברות עם `Google` דרך מודול `Kotlin` שלנו (החלטה 041).
+- **החלטות קשורות:** 005, 022, 028, 030, 032, 033, 035, 037, 038, 041.
 - **מסמכים קשורים:** [ADR-001](ADR-001-key-management.md), [architecture.md](../architecture.md), [threat-model.md](../threat-model.md).
 
 ## ההחלטה בקצרה
@@ -28,12 +28,15 @@
 - **`passkey`:** ‏`react-native-passkeys`, כולל הרחבת `PRF` (עובדה, נבדק בניסוי 01).
 - **זיהוי שקט של `passkey` שנמחק (החלטה 035):**
   - בעזרת `prepareGetCredential` של `Credential Manager`.
-  - כנראה `react-native-passkeys` לא חושף אותו (לאימות). אם כך, נכתוב מודול `Expo` קטן ב־`Kotlin`, עם פונקציה אחת בלבד.
+  - ‏`react-native-passkeys` לא חושף אותו (עובדה, חיפוש בקוד הספרייה ב־2026-11-17). לכן הוא ייכנס למודול `credentials` שלנו, ב־`Kotlin`.
 - **שמירת מפתח הכספת:** ‏`expo-secure-store` (עובדה, נבדק בניסוי 01).
 - **מסד נתונים מקומי:**
   - ‏`expo-sqlite`, עם `SQL` רגיל ומיגרציות שנכתבות ביד.
   - שמירת פריט ושורה ב־`outbox` נעשות באותה טרנזקציה, כפי שהארכיטקטורה דורשת.
-- **התחברות עם `Google`:** ‏`@react-native-google-signin/google-signin` (הנחה: זו האפשרות הנפוצה).
+- **התחברות עם `Google` (החלטה 041):**
+  - מודול `Expo` מקומי שלנו, `apps/mobile/modules/credentials`, ב־`Kotlin`. הוא קורא ל־`Credential Manager` עם `Sign in with Google`, הדרך ש־`Google` ממליצה עליה היום ([Android](https://developer.android.com/identity/sign-in/credential-manager-siwg-implementation)).
+  - **לא `@react-native-google-signin/google-signin`:** הגרסה החינמית שלה בנויה על `SDK` ש־`Google` הוציאה משימוש, והגרסה על `Credential Manager` בתשלום ([הספרייה](https://react-native-google-signin.github.io/docs/install)).
+  - **בשרת:** ה־`ID token` נבדק עם `google-auth-library`, מול ה־`Web client`. נשמר רק ה־`sub`, בלי כתובת מייל.
 - **נעילת האפליקציה (החלטה 028):** ‏`expo-local-authentication`, עם הביומטריה או קוד הנעילה של המכשיר.
 - **ניווט:** ‏`expo-router`, ברירת המחדל של `Expo`.
 - **עברית ואנגלית:**
@@ -111,9 +114,8 @@ coupon-wallet/
 
 ## לאימות
 
-- האם `react-native-passkeys` חושף את `prepareGetCredential`.
 - האם `expo-share-intent` עובד ב־`Expo SDK 57`.
-- האם `@react-native-google-signin/google-signin` הוא עדיין הספרייה המומלצת.
+- ‏`react-native-passkeys` מבקש את `androidx.credentials` בגרסה `1.3.0-alpha01`, והמודול שלנו את `1.5.0`. ‏`Gradle` בוחר בגרסה הגבוהה, ולכן צריך לבדוק שה־`passkey` עדיין עובד אחרי הבנייה.
 - הגרסאות המדויקות של כל ספרייה, כשמקימים את הפרויקט.
 
 ## ההשלכות
