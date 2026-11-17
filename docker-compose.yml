@@ -15,10 +15,13 @@ services:
       interval: 2s
       retries: 15
 
+  # GOOGLE_WEB_CLIENT_ID and JWT_SECRET come from the git-ignored .env next to this file (see .env.example).
   api:
     build: .
-    environment:
+    environment: &server-env
       DATABASE_URL: postgres://cw:cw@db:5432/cw
+      GOOGLE_WEB_CLIENT_ID: ${GOOGLE_WEB_CLIENT_ID:?set GOOGLE_WEB_CLIENT_ID in .env}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
     ports:
       - "127.0.0.1:3000:3000"
     depends_on:
@@ -29,8 +32,7 @@ services:
   worker:
     build: .
     command: ["node", "src/index.ts", "worker"]
-    environment:
-      DATABASE_URL: postgres://cw:cw@db:5432/cw
+    environment: *server-env
     depends_on:
       db:
         condition: service_healthy
