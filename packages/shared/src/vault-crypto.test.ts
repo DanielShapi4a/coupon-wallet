@@ -135,13 +135,15 @@ describe('signing key pair (decision 033)', () => {
   });
 
   it('produces signatures that Node.js crypto verifies, as the server will', () => {
-    const { publicKey, privateKey } = vc.deriveSigningKeyPair(vc.generateVaultKey());
-    const challenge = sodium.randombytes_buf(32);
-    const signature = sodium.crypto_sign_detached(challenge, privateKey);
+    const vaultKey = vc.generateVaultKey();
+    const { publicKey } = vc.deriveSigningKeyPair(vaultKey);
+    const message = 'cw-replace-passkey-v1|challenge|wrapped|credential';
+    const signature = Buffer.from(vc.signWithVaultKey(vaultKey, message), 'base64url');
     // DER prefix of an Ed25519 SubjectPublicKeyInfo, followed by the 32-byte raw key.
     const spki = Buffer.concat([Buffer.from('302a300506032b6570032100', 'hex'), Buffer.from(publicKey)]);
     const key = createPublicKey({ key: spki, format: 'der', type: 'spki' });
-    expect(verify(null, challenge, key, signature)).toBe(true);
-    expect(verify(null, sodium.randombytes_buf(32), key, signature)).toBe(false);
+    expect(signature).toHaveLength(64);
+    expect(verify(null, Buffer.from(message), key, signature)).toBe(true);
+    expect(verify(null, Buffer.from(`${message}x`), key, signature)).toBe(false);
   });
 });

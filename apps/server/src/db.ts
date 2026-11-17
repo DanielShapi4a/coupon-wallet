@@ -3,6 +3,7 @@ import { Migrator } from 'kysely/migration';
 import pg from 'pg';
 import * as m0001 from '../migrations/0001_init.ts';
 import * as m0002 from '../migrations/0002_auth_and_vault.ts';
+import * as m0003 from '../migrations/0003_challenges.ts';
 
 // Hand-written to match the migrations; switch to kysely-codegen once there are several more tables (ADR-002).
 export interface Database {
@@ -27,6 +28,15 @@ export interface Database {
     created_at: ColumnType<Date, never, never>;
     updated_at: ColumnType<Date, never, Date>;
   };
+  challenges: {
+    id: Generated<string>;
+    user_id: string;
+    purpose: string;
+    challenge: string;
+    expires_at: Date;
+    used_at: Date | null;
+    created_at: ColumnType<Date, never, never>;
+  };
 }
 
 export function createDb(databaseUrl: string): Kysely<Database> {
@@ -36,7 +46,7 @@ export function createDb(databaseUrl: string): Kysely<Database> {
 }
 
 // Static list instead of reading a folder: works the same on Windows and in the Linux image.
-const migrations = { '0001_init': m0001, '0002_auth_and_vault': m0002 };
+const migrations = { '0001_init': m0001, '0002_auth_and_vault': m0002, '0003_challenges': m0003 };
 
 export async function migrateToLatest(db: Kysely<Database>): Promise<void> {
   const { error, results } = await new Migrator({

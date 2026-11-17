@@ -24,6 +24,7 @@ export interface Sodium {
   ): Uint8Array;
   crypto_kdf_derive_from_key(subkeyLength: number, subkeyId: number, context: string, key: Uint8Array): Uint8Array;
   crypto_sign_seed_keypair(seed: Uint8Array): { publicKey: Uint8Array; privateKey: Uint8Array };
+  crypto_sign_detached(message: Uint8Array, privateKey: Uint8Array): Uint8Array;
   randombytes_buf(length: number): Uint8Array;
   to_string(bytes: Uint8Array): string;
   to_base64(bytes: Uint8Array, variant: number): string;
@@ -52,6 +53,8 @@ export interface VaultCrypto {
   wrapVaultKey(vaultKey: Uint8Array, wrappingKey: Uint8Array): string;
   unwrapVaultKey(wrapped: string, wrappingKey: Uint8Array): Uint8Array;
   deriveSigningKeyPair(vaultKey: Uint8Array): { publicKey: Uint8Array; privateKey: Uint8Array };
+  /** Proves holding the vault key (decision 033): an Ed25519 signature, base64url. */
+  signWithVaultKey(vaultKey: Uint8Array, message: string): string;
 }
 
 export function createVaultCrypto(sodium: Sodium): VaultCrypto {
@@ -112,13 +115,18 @@ export function createVaultCrypto(sodium: Sodium): VaultCrypto {
       return vaultKey;
     },
 
-    deriveSigningKeyPair(vaultKey) {
-      requireLength(vaultKey, KEY_BYTES, 'vault key');
-      const seed = sodium.crypto_kdf_derive_from_key(KEY_BYTES, KDF_SUBKEY_ID, KDF_CONTEXT.signing, vaultKey);
-      const { publicKey, privateKey } = sodium.crypto_sign_seed_keypair(seed);
-      return { publicKey, privateKey };
-    },
+    deriveSigningKeyPair: signingKeyPair,
+
+    signWithVaultKey: (vaultKey, message) =>
+      encode(sodium.crypto_sign_detached(new TextEncoder().encode(message), signingKeyPair(vaultKey).privateKey)),
   };
+
+  function signingKeyPair(vaultKey: Uint8Array) {
+    requireLength(vaultKey, KEY_BYTES, 'vault key');
+    const seed = sodium.crypto_kdf_derive_from_key(KEY_BYTES, KDF_SUBKEY_ID, KDF_CONTEXT.signing, vaultKey);
+    const { publicKey, privateKey } = sodium.crypto_sign_seed_keypair(seed);
+    return { publicKey, privateKey };
+  }
 }
 
 function requireLength(bytes: Uint8Array, length: number, name: string): void {

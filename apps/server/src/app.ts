@@ -1,9 +1,22 @@
+import { randomBytes } from 'node:crypto';
 import Fastify, { type FastifyReply, type FastifyRequest, type FastifyServerOptions } from 'fastify';
-import type { Kysely } from 'kysely';
-import { GoogleSignInRequest, RefreshRequest, Vault, type HealthResponse } from '@cw/shared';
+import { sql, type Kysely } from 'kysely';
+import {
+  GoogleSignInRequest,
+  RefreshRequest,
+  ReplacePasskeyRequest,
+  replacePasskeyMessage,
+  Vault,
+  type Challenge,
+  type HealthResponse,
+} from '@cw/shared';
 import type { Database } from './db.ts';
 import type { VerifyGoogleIdToken } from './google.ts';
+import { verifyEd25519 } from './signatures.ts';
 import { issueTokens, rotateRefreshToken, verifyAccessToken } from './tokens.ts';
+
+const CHALLENGE_TTL_MS = 5 * 60 * 1000;
+const REPLACE_PASSKEY = 'replace_passkey';
 
 export interface AppDeps {
   checkDb: () => Promise<void>;
@@ -97,6 +110,70 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
       .executeTakeFirst();
     if (!inserted) return reply.code(409).send({ error: 'vault_exists' });
     return reply.code(201).send(body.data);
+  });
+
+  // A one-time challenge to replace the vault's passkey (self-repair, decision 035).
+  app.post('/vault/challenge', async (req, reply) => {
+    const userId = await requireUser(req, reply);
+    if (!userId) return;
+    const challenge = randomBytes(32).toString('base64url');
+    const row = await db
+      .insertInto('challenges')
+      .values({ user_id: userId, purpose: REPLACE_PASSKEY, challenge, expires_at: new Date(Date.now() + CHALLENGE_TTL_MS) })
+      .returning('id')
+      .executeTakeFirstOrThrow();
+    return { challengeId: row.id, challenge } satisfies Challenge;
+  });
+
+  // Replaces the wrapped vault key and the passkey ID. Needs a signature with the vault key over the
+  // challenge and the new content (decision 033): an access token alone is not enough, so someone who
+  // takes over the Google account cannot lock the user out of the vault.
+  app.put('/vault/passkey', async (req, reply) => {
+    const userId = await requireUser(req, reply);
+    if (!userId) return;
+    const body = ReplacePasskeyRequest.safeParse(req.body);
+    if (!body.success) return badRequest(reply);
+
+    const vault = await db
+      .selectFrom('vaults')
+      .select('signing_public_key')
+      .where('user_id', '=', userId)
+      .executeTakeFirst();
+    if (!vault) return reply.code(404).send({ error: 'not_found' });
+
+    // Consume the challenge atomically: it works once, for this user and purpose, before it expires.
+    // A wrong signature still uses it up; the app asks for a new one.
+    const challenge = await db
+      .updateTable('challenges')
+      .set({ used_at: new Date() })
+      .where('id', '=', body.data.challengeId)
+      .where('user_id', '=', userId)
+      .where('purpose', '=', REPLACE_PASSKEY)
+      .where('used_at', 'is', null)
+      .where('expires_at', '>', new Date())
+      .returning('challenge')
+      .executeTakeFirst();
+    if (!challenge) return reply.code(401).send({ error: 'invalid_challenge' });
+
+    const message = replacePasskeyMessage({ challenge: challenge.challenge, ...body.data });
+    if (!verifyEd25519(vault.signing_public_key, message, body.data.signature)) {
+      return reply.code(401).send({ error: 'invalid_signature' });
+    }
+
+    await db
+      .updateTable('vaults')
+      .set({
+        wrapped_vault_key: body.data.wrappedVaultKey,
+        passkey_credential_id: body.data.passkeyCredentialId,
+        updated_at: sql<Date>`now()`,
+      })
+      .where('user_id', '=', userId)
+      .execute();
+    return {
+      wrappedVaultKey: body.data.wrappedVaultKey,
+      signingPublicKey: vault.signing_public_key,
+      passkeyCredentialId: body.data.passkeyCredentialId,
+    } satisfies Vault;
   });
 
   return app;

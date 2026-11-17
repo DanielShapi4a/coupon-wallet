@@ -23,3 +23,24 @@ export const Vault = z.object({
   passkeyCredentialId: base64Url(1400),
 });
 export type Vault = z.infer<typeof Vault>;
+
+/** A one-time challenge for an action that needs proof of holding the vault key (decision 033). */
+export const Challenge = z.object({ challengeId: z.uuid(), challenge: base64Url(64) });
+export type Challenge = z.infer<typeof Challenge>;
+
+/** Self-repair (decision 035): the same vault key, wrapped with a new passkey, signed with the vault key. */
+export const ReplacePasskeyRequest = z.object({
+  challengeId: z.uuid(),
+  wrappedVaultKey: Vault.shape.wrappedVaultKey,
+  passkeyCredentialId: Vault.shape.passkeyCredentialId,
+  // Ed25519 signature, 64 bytes.
+  signature: base64Url(86).length(86),
+});
+export type ReplacePasskeyRequest = z.infer<typeof ReplacePasskeyRequest>;
+
+/**
+ * What the app signs to replace the vault's passkey. It covers the challenge and the new content
+ * together, so a captured signature cannot be replayed or attached to other content.
+ */
+export const replacePasskeyMessage = (r: { challenge: string; wrappedVaultKey: string; passkeyCredentialId: string }) =>
+  ['cw-replace-passkey-v1', r.challenge, r.wrappedVaultKey, r.passkeyCredentialId].join('|');

@@ -1,8 +1,9 @@
+import { generateKeyPairSync, sign, type KeyObject } from 'node:crypto';
 import { SignJWT } from 'jose';
 import { sql, type Kysely } from 'kysely';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { AuthTokens, type Vault } from '@cw/shared';
+import { AuthTokens, Challenge, replacePasskeyMessage, type Vault } from '@cw/shared';
 import { buildApp } from './app.ts';
 import { createDb, migrateToLatest, type Database } from './db.ts';
 
@@ -55,7 +56,7 @@ beforeAll(async () => {
   await migrateToLatest(db);
 });
 beforeEach(async () => {
-  await sql`truncate users, refresh_tokens, vaults`.execute(db);
+  await sql`truncate users, refresh_tokens, vaults, challenges`.execute(db);
 });
 afterAll(async () => {
   await db?.destroy();
@@ -151,5 +152,92 @@ describe('/vault', () => {
     const bob = await signIn('bob');
     await app().inject({ method: 'PUT', url: '/vault', headers: bearer(alice.accessToken), payload: vault });
     expect((await app().inject({ method: 'GET', url: '/vault', headers: bearer(bob.accessToken) })).statusCode).toBe(404);
+  });
+});
+
+describe('PUT /vault/passkey (self-repair, signed with the vault key)', () => {
+  // Stands in for the vault's signing key pair; the app derives it from the vault key (decision 033).
+  const newSigningKey = () => {
+    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+    return { privateKey, publicKey: publicKey.export({ format: 'jwk' }).x as string };
+  };
+  const signBody = (privateKey: KeyObject, challenge: string, content: { wrappedVaultKey: string; passkeyCredentialId: string }) =>
+    sign(null, Buffer.from(replacePasskeyMessage({ challenge, ...content })), privateKey).toString('base64url');
+
+  const replacement = { wrappedVaultKey: 'C'.repeat(98), passkeyCredentialId: 'new-credential' };
+
+  /** A signed-in user with a vault whose signing public key is `key.publicKey`. */
+  async function userWithVault(sub: string, key = newSigningKey()) {
+    const { accessToken } = await signIn(sub);
+    await app().inject({
+      method: 'PUT',
+      url: '/vault',
+      headers: bearer(accessToken),
+      payload: { ...vault, signingPublicKey: key.publicKey },
+    });
+    return { accessToken, key };
+  }
+  const getChallenge = async (accessToken: string) =>
+    Challenge.parse((await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken) })).json());
+  const replace = (accessToken: string, payload: object) =>
+    app().inject({ method: 'PUT', url: '/vault/passkey', headers: bearer(accessToken), payload });
+
+  it('replaces the wrapped key and the passkey ID with a valid signature', async () => {
+    const { accessToken, key } = await userWithVault('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken);
+    const res = await replace(accessToken, { challengeId, ...replacement, signature: signBody(key.privateKey, challenge, replacement) });
+    expect(res.statusCode).toBe(200);
+
+    const stored = (await app().inject({ method: 'GET', url: '/vault', headers: bearer(accessToken) })).json();
+    expect(stored).toEqual({ ...replacement, signingPublicKey: key.publicKey });
+  });
+
+  it('rejects a signature made with another key', async () => {
+    const { accessToken } = await userWithVault('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken);
+    const res = await replace(accessToken, { challengeId, ...replacement, signature: signBody(newSigningKey().privateKey, challenge, replacement) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: 'invalid_signature' });
+  });
+
+  it('rejects content changed after signing', async () => {
+    const { accessToken, key } = await userWithVault('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken);
+    const signature = signBody(key.privateKey, challenge, replacement);
+    const res = await replace(accessToken, { challengeId, ...replacement, wrappedVaultKey: 'D'.repeat(98), signature });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('accepts each challenge only once', async () => {
+    const { accessToken, key } = await userWithVault('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken);
+    const payload = { challengeId, ...replacement, signature: signBody(key.privateKey, challenge, replacement) };
+    expect((await replace(accessToken, payload)).statusCode).toBe(200);
+    const again = await replace(accessToken, payload);
+    expect(again.statusCode).toBe(401);
+    expect(again.json()).toEqual({ error: 'invalid_challenge' });
+  });
+
+  it('rejects an expired challenge', async () => {
+    const { accessToken, key } = await userWithVault('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken);
+    await db.updateTable('challenges').set({ expires_at: new Date(Date.now() - 1000) }).where('id', '=', challengeId).execute();
+    const res = await replace(accessToken, { challengeId, ...replacement, signature: signBody(key.privateKey, challenge, replacement) });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("rejects another user's challenge", async () => {
+    const alice = await userWithVault('alice');
+    const bob = await userWithVault('bob');
+    const { challengeId, challenge } = await getChallenge(alice.accessToken);
+    const res = await replace(bob.accessToken, { challengeId, ...replacement, signature: signBody(bob.key.privateKey, challenge, replacement) });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it('returns 404 without a vault, and 400 for a malformed body', async () => {
+    const { accessToken } = await signIn('no-vault');
+    const { challengeId } = await getChallenge(accessToken);
+    expect((await replace(accessToken, { challengeId, ...replacement, signature: 'A'.repeat(86) })).statusCode).toBe(404);
+    expect((await replace(accessToken, { challengeId, ...replacement, signature: 'short' })).statusCode).toBe(400);
   });
 });
