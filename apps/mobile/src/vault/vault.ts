@@ -10,9 +10,16 @@ import * as storage from './storage';
 // The server keeps the wrapped vault key, the signing public key and the passkey's credential ID.
 
 let vaultCrypto: VaultCrypto | undefined;
-async function getVaultCrypto(): Promise<VaultCrypto> {
+export async function getVaultCrypto(): Promise<VaultCrypto> {
   await sodium.ready;
   return (vaultCrypto ??= createVaultCrypto(sodium));
+}
+
+/** The vault key from this phone's secure storage, for sealing and opening items. */
+export async function requireVaultKey(): Promise<Uint8Array> {
+  const stored = await storage.loadVaultKey();
+  if (!stored) throw new Error('No vault on this phone: create or recover the vault first');
+  return sodium.from_base64(stored, sodium.base64_variants.URLSAFE_NO_PADDING);
 }
 
 const encode = (bytes: Uint8Array) => sodium.to_base64(bytes, sodium.base64_variants.URLSAFE_NO_PADDING);

@@ -10,11 +10,13 @@
   "dependencies": {
     "@cw/shared": "*",
     "expo": "~57.0.33",
+    "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.24",
     "expo-dev-client": "~57.0.21",
     "expo-linking": "~57.0.14",
     "expo-router": "~57.0.31",
     "expo-secure-store": "~57.0.4",
+    "expo-sqlite": "~57.0.5",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",
     "react-native": "0.86.3",

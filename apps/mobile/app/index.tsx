@@ -1,134 +1,88 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
-import * as sodium from 'react-native-libsodium';
-import { HealthResponse, selfTest } from '@cw/shared';
-import { isSignedIn, signIn, signOut } from '../src/api/client';
-import {
-  checkPasskey,
-  createVault,
-  forgetVaultKey,
-  getVaultStatus,
-  hasServerVault,
-  recoverVault,
-  repairPasskey,
-} from '../src/vault/vault';
+import { useCallback, useState } from 'react';
+import { Button, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Stack, router, useFocusEffect } from 'expo-router';
+import { formatShekels, itemStates, walletSummary, type WalletItem } from '@cw/shared';
+import { getVaultStatus } from '../src/vault/vault';
+import { dateLabel, STATE_LABEL, valueLabel } from '../src/wallet/format';
+import { listWallet, syncNow } from '../src/wallet/wallet';
 
-// Set in apps/mobile/.env (see .env.example). In development it is the tunnel URL of the local server.
-const API_URL = process.env.EXPO_PUBLIC_API_URL;
+// The wallet (WAL-1 to WAL-3). A minimal working screen; the real design comes later.
+export default function Wallet() {
+  const [items, setItems] = useState<WalletItem[] | null>(null);
+  const [hasVault, setHasVault] = useState(true);
+  const [sync, setSync] = useState('');
+  const [error, setError] = useState('');
 
-// Development screen: the server connection, the crypto self-test, sign-in and the vault flows.
-// The real screens are designed once the flows work.
-export default function Home() {
-  const [status, setStatus] = useState('Checking the server…');
-  const [crypto, setCrypto] = useState('Running the crypto self-test…');
-  const [vault, setVault] = useState('Checking the vault…');
-  const [passkeyMissing, setPasskeyMissing] = useState(false);
-  const [log, setLog] = useState<string[]>([]);
+  useFocusEffect(
+    useCallback(() => {
+      (async () => {
+        try {
+          const { hasVaultKey } = await getVaultStatus();
+          setHasVault(hasVaultKey);
+          if (!hasVaultKey) return;
+          setItems(await listWallet());
+          const { pending } = await syncNow();
+          setSync(pending ? `${pending} change(s) not synced yet` : 'Synced');
+        } catch (err) {
+          setError(String(err));
+        }
+      })();
+    }, []),
+  );
 
-  const refreshVault = useCallback(async () => {
-    try {
-      // The silent check runs first and needs no network (decision 035).
-      const passkey = await checkPasskey().catch((err) => `check failed: ${String(err)}`);
-      setPasskeyMissing(passkey === 'missing');
-      const signedIn = await isSignedIn();
-      const local = await getVaultStatus();
-      const server = signedIn ? ((await hasServerVault()) ? 'present' : 'missing') : 'sign in to check';
-      setVault(
-        `Signed in: ${signedIn ? 'yes' : 'no'}\n` +
-          `Vault key on this phone: ${local.hasVaultKey ? `present (id ${local.keyId})` : 'missing'}\n` +
-          `Vault on the server: ${server}\n` +
-          `Passkey (silent check): ${passkey}`,
-      );
-    } catch (err) {
-      setVault(`Vault: ERROR ${String(err)}`);
-    }
-  }, []);
-
-  const run = (label: string, action: () => Promise<string>) => async () => {
-    let line: string;
-    try {
-      line = `${label}: ${await action()}`;
-    } catch (err) {
-      line = `${label}: ERROR ${String(err)}`;
-    }
-    setLog((prev) => [line, ...prev]);
-    await refreshVault();
-  };
-
-  useEffect(() => {
-    sodium.ready
-      .then(() => {
-        const result = selfTest(sodium);
-        setCrypto(result.ok ? 'Crypto self-test: PASS' : `Crypto self-test: FAIL (${result.failed})`);
-      })
-      .catch((err) => setCrypto(`Crypto self-test: FAIL (${String(err)})`));
-    refreshVault();
-  }, [refreshVault]);
-
-  useEffect(() => {
-    if (!API_URL) {
-      setStatus('EXPO_PUBLIC_API_URL is not set');
-      return;
-    }
-    fetch(`${API_URL}/health`)
-      .then((res) => res.json())
-      .then((json) => {
-        const health = HealthResponse.parse(json);
-        setStatus(health.ok ? 'Connected to the server, database up' : 'Server up, database down');
-      })
-      .catch((err) => setStatus(`Server unreachable: ${String(err)}`));
-  }, []);
+  const now = new Date();
+  const summary = items ? walletSummary(items, now) : null;
 
   return (
     <View style={styles.root}>
-      <Text style={styles.text}>{status}</Text>
-      <Text style={styles.text}>{crypto}</Text>
-
-      <Text style={styles.heading}>Vault (development)</Text>
-      {passkeyMissing && (
-        <View style={styles.banner}>
-          <Text style={styles.bannerText}>Your backup was deleted. Repair it so the wallet can be recovered on a new phone.</Text>
-          <Button
-            title="Repair backup"
-            onPress={run('Repair backup', async () => `OK, same key id ${(await repairPasskey()).keyId}, new passkey`)}
-          />
+      <Stack.Screen options={{ title: 'Wallet' }} />
+      {!hasVault ? (
+        <View style={styles.empty}>
+          <Text style={styles.text}>No vault on this phone yet. Sign in and create or recover the vault first.</Text>
+          <Button title="Set up (development)" onPress={() => router.push('/dev')} />
         </View>
+      ) : (
+        <>
+          {summary && (
+            <Text style={styles.summary}>
+              Stored value: {formatShekels(summary.storedAgorot)}
+              {summary.unknownBalances ? ` (${summary.unknownBalances} unknown)` : ''} · Expiring this week:{' '}
+              {summary.expiringThisWeek}
+            </Text>
+          )}
+          <FlatList
+            data={items ?? []}
+            keyExtractor={(i) => i.id}
+            ListEmptyComponent={<Text style={styles.text}>{items ? 'No items yet.' : 'Loading…'}</Text>}
+            renderItem={({ item }) => {
+              const states = itemStates(item.metadata, now);
+              return (
+                <Pressable style={styles.row} onPress={() => router.push(`/item/${item.id}`)}>
+                  <Text style={styles.merchant}>{item.metadata.merchant}</Text>
+                  <Text style={styles.text}>{valueLabel(item)}</Text>
+                  <Text style={styles.meta}>
+                    Valid until {dateLabel(item.metadata.validUntil)}
+                    {states.length ? ` · ${states.map((s) => STATE_LABEL[s]).join(', ')}` : ''}
+                  </Text>
+                </Pressable>
+              );
+            }}
+          />
+          <Text style={styles.meta}>{error || sync}</Text>
+          <Button title="Add item" onPress={() => router.push('/add')} />
+        </>
       )}
-      <Text style={styles.text}>{vault}</Text>
-      <View style={styles.buttons}>
-        <Button title="Sign in with Google" onPress={run('Sign in', async () => (await signIn(), 'OK'))} />
-        <Button
-          title="Create vault"
-          onPress={run('Create vault', async () => {
-            const r = await createVault();
-            return `OK, key id ${r.keyId}, ${r.confirmations} confirmation(s)`;
-          })}
-        />
-        <Button
-          title="Recover vault"
-          onPress={run('Recover vault', async () => `recovered key id ${(await recoverVault()).keyId}`)}
-        />
-        <Button title="Forget key on this phone" onPress={run('Forget key', async () => (await forgetVaultKey(), 'done'))} />
-        <Button title="Sign out" onPress={run('Sign out', async () => (await signOut(), 'done'))} />
-      </View>
-      <ScrollView style={styles.log}>
-        {log.map((line, i) => (
-          <Text key={i} selectable style={styles.logLine}>
-            {line}
-          </Text>
-        ))}
-      </ScrollView>
+      <Button title="Development" onPress={() => router.push('/dev')} />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, padding: 24, paddingTop: 64, gap: 12 },
-  heading: { fontSize: 18, fontWeight: '600', marginTop: 16 },
-  text: { fontSize: 16 },
-  buttons: { gap: 8 },
-  banner: { backgroundColor: '#FDECEA', borderRadius: 8, padding: 12, gap: 8 },
-  bannerText: { fontSize: 15, color: '#7A1C14' },
-  log: { marginTop: 8 },
-  logLine: { fontFamily: 'monospace', fontSize: 12, marginBottom: 4 },
+  root: { flex: 1, padding: 16, gap: 8 },
+  empty: { gap: 12, paddingVertical: 24 },
+  summary: { fontSize: 16, fontWeight: '600' },
+  row: { paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: '#ccc', gap: 2 },
+  merchant: { fontSize: 17, fontWeight: '600' },
+  text: { fontSize: 15 },
+  meta: { fontSize: 13, color: '#666' },
 });
