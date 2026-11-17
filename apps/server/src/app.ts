@@ -12,6 +12,7 @@ import {
 } from '@cw/shared';
 import type { Database } from './db.ts';
 import type { VerifyGoogleIdToken } from './google.ts';
+import { registerItemRoutes } from './items.ts';
 import { verifyEd25519 } from './signatures.ts';
 import { issueTokens, revokeRefreshToken, rotateRefreshToken, verifyAccessToken } from './tokens.ts';
 
@@ -23,7 +24,11 @@ export interface AppDeps {
   db: Kysely<Database>;
   jwtSecret: string;
   verifyGoogleIdToken: VerifyGoogleIdToken;
+  /** Items per user; a guard against one account filling the database. */
+  maxItemsPerUser?: number;
 }
+
+const DEFAULT_MAX_ITEMS_PER_USER = 2000;
 
 export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
   const { db, jwtSecret } = deps;
@@ -192,6 +197,8 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
       passkeyCredentialId: body.data.passkeyCredentialId,
     } satisfies Vault;
   });
+
+  registerItemRoutes(app, db, requireUser, deps.maxItemsPerUser ?? DEFAULT_MAX_ITEMS_PER_USER);
 
   return app;
 }

@@ -30,12 +30,13 @@ async function ensureDatabase(url: string): Promise<void> {
 
 let db: Kysely<Database>;
 // The fake Google verifier accepts tokens of the form "google:<sub>".
-const app = () =>
+const app = (maxItemsPerUser?: number) =>
   buildApp({
     checkDb: async () => {},
     db,
     jwtSecret: JWT_SECRET,
     verifyGoogleIdToken: async (idToken) => (idToken.startsWith('google:') ? idToken.slice(7) : null),
+    maxItemsPerUser,
   });
 
 const signIn = async (sub: string) => {
@@ -57,7 +58,7 @@ beforeAll(async () => {
   await migrateToLatest(db);
 });
 beforeEach(async () => {
-  await sql`truncate users, refresh_tokens, vaults, challenges`.execute(db);
+  await sql`truncate users, refresh_tokens, vaults, challenges, items`.execute(db);
 });
 afterAll(async () => {
   await db?.destroy();
@@ -275,5 +276,97 @@ describe('cleanup (worker)', () => {
 
     expect(await cleanup(db)).toEqual({ refreshTokens: 1, challenges: 1 });
     expect((await app().inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken: live.refreshToken } })).statusCode).toBe(200);
+  });
+});
+
+describe('/items', () => {
+  const ID = '0b7c8a52-3f7e-4c1a-9d2b-5e6f7a8b9c0d';
+  // The server never sees plaintext secrets: these stand in for sealed ciphertext.
+  const sealed = (over: Record<string, unknown> = {}) => ({
+    id: ID,
+    version: 1,
+    deleted: false,
+    metadata: {
+      merchant: 'Swish',
+      value: { kind: 'stored_value', initialAgorot: 10_000, remainingAgorot: 10_000, lastVerifiedAt: null },
+      status: 'active',
+      usage: 'multi',
+      channel: 'store',
+      transferable: 'unknown',
+      receivedFrom: null,
+      receivedAt: null,
+      validFrom: null,
+      validUntil: '2026-12-31T23:59:59+02:00',
+    },
+    credential: 'Q1JFREVOVElBTA',
+    details: 'REVUQUlMUw',
+    ...over,
+  });
+  const put = (accessToken: string, body: Record<string, unknown>, id = body.id as string, maxItems?: number) =>
+    app(maxItems).inject({ method: 'PUT', url: `/items/${id}`, headers: bearer(accessToken), payload: body });
+  const list = async (accessToken: string) =>
+    (await app().inject({ method: 'GET', url: '/items', headers: bearer(accessToken) })).json() as { id: string; version: number }[];
+
+  it('creates an item and returns it', async () => {
+    const { accessToken } = await signIn('sub-1');
+    expect((await put(accessToken, sealed())).json()).toEqual({ version: 1 });
+    expect(await list(accessToken)).toEqual([sealed()]);
+  });
+
+  it('keeps only newer versions: same version is a no-op, an older one is refused', async () => {
+    const { accessToken } = await signIn('sub-1');
+    await put(accessToken, sealed());
+    const v2 = sealed({ version: 2, credential: 'TkVX' });
+    expect((await put(accessToken, v2)).statusCode).toBe(200);
+    expect((await put(accessToken, v2)).json()).toEqual({ version: 2 });
+    const old = await put(accessToken, sealed({ version: 1, credential: 'T0xE' }));
+    expect(old.statusCode).toBe(409);
+    expect(old.json()).toEqual({ error: 'stale', currentVersion: 2 });
+    expect((await list(accessToken))[0]).toMatchObject({ version: 2, credential: 'TkVX' });
+  });
+
+  it('deletes with a newer version, and keeps nothing secret for the deleted item', async () => {
+    const { accessToken } = await signIn('sub-1');
+    await put(accessToken, sealed());
+    expect((await put(accessToken, sealed({ version: 2, deleted: true }))).statusCode).toBe(200);
+    expect(await list(accessToken)).toEqual([]);
+    const row = await db.selectFrom('items').select(['credential', 'details']).executeTakeFirstOrThrow();
+    expect(row).toEqual({ credential: null, details: null });
+  });
+
+  it('rejects malformed requests', async () => {
+    const { accessToken } = await signIn('sub-1');
+    expect((await put(accessToken, sealed(), 'not-a-uuid')).statusCode).toBe(400);
+    expect((await put(accessToken, sealed(), '1c8d9b63-4a8f-4d2b-8e3c-6f7a8b9c0d1e')).statusCode).toBe(400);
+    expect((await put(accessToken, sealed({ metadata: { merchant: 'x' } }))).statusCode).toBe(400);
+    expect((await put(accessToken, sealed({ credential: 'not base64url!' }))).statusCode).toBe(400);
+  });
+
+  it('needs a valid access token', async () => {
+    expect((await app().inject({ method: 'GET', url: '/items' })).statusCode).toBe(401);
+    expect((await app().inject({ method: 'PUT', url: `/items/${ID}`, payload: sealed() })).statusCode).toBe(401);
+  });
+
+  it('keeps users apart: no reading, overwriting or deleting another user\'s item, even with its ID', async () => {
+    const alice = await signIn('alice');
+    const bob = await signIn('bob');
+    await put(alice.accessToken, sealed());
+
+    expect(await list(bob.accessToken)).toEqual([]);
+    // Same ID from Bob: it creates Bob's own item and leaves Alice's untouched.
+    await put(bob.accessToken, sealed({ version: 5, credential: 'Qk9C' }));
+    await put(bob.accessToken, sealed({ version: 6, deleted: true }));
+    expect(await list(alice.accessToken)).toEqual([sealed()]);
+  });
+
+  it('caps the number of items per user', async () => {
+    const { accessToken } = await signIn('sub-1');
+    const ids = ['11111111-1111-4111-8111-111111111111', '22222222-2222-4222-8222-222222222222', '33333333-3333-4333-8333-333333333333'];
+    expect((await put(accessToken, sealed({ id: ids[0] }), ids[0], 2)).statusCode).toBe(200);
+    expect((await put(accessToken, sealed({ id: ids[1] }), ids[1], 2)).statusCode).toBe(200);
+    const third = await put(accessToken, sealed({ id: ids[2] }), ids[2], 2);
+    expect(third.statusCode).toBe(403);
+    // Updating an existing item still works at the cap.
+    expect((await put(accessToken, sealed({ id: ids[0], version: 2 }), ids[0], 2)).statusCode).toBe(200);
   });
 });
