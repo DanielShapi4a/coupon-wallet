@@ -1,10 +1,12 @@
 import * as sodium from 'react-native-libsodium';
-import { createVaultCrypto, PRF_SALT, Vault, type VaultCrypto } from '@cw/shared';
+import { Challenge, createVaultCrypto, PRF_SALT, replacePasskeyMessage, Vault, type VaultCrypto } from '@cw/shared';
+import { hasPasskey } from '../../modules/credentials';
 import { apiFetch, ApiError } from '../api/client';
-import { createPasskey, getPrfOutput } from './passkey';
+import { createPasskey, getPrfOutput, RP_ID } from './passkey';
 import * as storage from './storage';
 
-// The vault flows from ADR-001: create the vault, and recover the vault key with the passkey.
+// The vault flows from ADR-001: create the vault, recover the vault key with the passkey, and
+// repair the backup when the passkey was deleted (decision 035).
 // The server keeps the wrapped vault key, the signing public key and the passkey's credential ID.
 
 let vaultCrypto: VaultCrypto | undefined;
@@ -66,6 +68,7 @@ export async function createVault(): Promise<{ keyId: string; confirmations: 1 |
   const res = await apiFetch('/vault', { method: 'PUT', body: JSON.stringify(vault) });
   if (res.status !== 201) throw new ApiError(res.status, 'The server did not store the vault');
   await storage.saveVaultKey(encode(vaultKey));
+  await storage.savePasskeyCredentialId(created.credentialId);
   return { keyId: await keyId(vaultKey), confirmations: created.prfOutput ? 1 : 2 };
 }
 
@@ -82,6 +85,49 @@ export async function recoverVault(): Promise<{ keyId: string }> {
     throw new Error('The recovered key does not match this vault');
   }
   await storage.saveVaultKey(encode(vaultKey));
+  await storage.savePasskeyCredentialId(vault.passkeyCredentialId);
+  return { keyId: await keyId(vaultKey) };
+}
+
+/**
+ * Decision 035, layer 2: is the vault's passkey still there? Checked without any UI.
+ * 'unknown' means there is nothing to check yet (no vault key on this phone, or no passkey ID).
+ */
+export async function checkPasskey(): Promise<'present' | 'missing' | 'unknown'> {
+  const [vaultKey, credentialId] = await Promise.all([storage.loadVaultKey(), storage.loadPasskeyCredentialId()]);
+  if (!vaultKey || !credentialId) return 'unknown';
+  return (await hasPasskey(RP_ID, credentialId)) ? 'present' : 'missing';
+}
+
+/**
+ * Decision 035, layer 3: self-repair. A new passkey wraps the same vault key, and the server
+ * replaces its copy only with a signature by the vault key over a one-time challenge (decision 033).
+ */
+export async function repairPasskey(): Promise<{ keyId: string }> {
+  const vc = await getVaultCrypto();
+  const stored = await storage.loadVaultKey();
+  if (!stored) throw new Error('No vault key on this phone: nothing to repair, recover instead');
+  const vaultKey = decode(stored);
+
+  const created = await createPasskey(prfSalt(), randomBase64Url);
+  const prfOutput = created.prfOutput ?? (await getPrfOutput(prfSalt(), randomBase64Url, created.credentialId));
+  const content = {
+    wrappedVaultKey: vc.wrapVaultKey(vaultKey, vc.deriveWrappingKey(decode(prfOutput))),
+    passkeyCredentialId: created.credentialId,
+  };
+
+  // An empty JSON object: Fastify rejects an empty body sent as application/json.
+  const challengeRes = await apiFetch('/vault/challenge', { method: 'POST', body: '{}' });
+  if (!challengeRes.ok) throw new ApiError(challengeRes.status, 'Could not get a challenge from the server');
+  const { challengeId, challenge } = Challenge.parse(await challengeRes.json());
+  const signature = vc.signWithVaultKey(vaultKey, replacePasskeyMessage({ challenge, ...content }));
+
+  const res = await apiFetch('/vault/passkey', {
+    method: 'PUT',
+    body: JSON.stringify({ challengeId, ...content, signature }),
+  });
+  if (!res.ok) throw new ApiError(res.status, 'The server did not accept the new passkey');
+  await storage.savePasskeyCredentialId(created.credentialId);
   return { keyId: await keyId(vaultKey) };
 }
 

@@ -177,8 +177,11 @@ describe('PUT /vault/passkey (self-repair, signed with the vault key)', () => {
     });
     return { accessToken, key };
   }
+  // Sent the way the app sends it: a JSON content type with an empty object.
   const getChallenge = async (accessToken: string) =>
-    Challenge.parse((await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken) })).json());
+    Challenge.parse(
+      (await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken), payload: {} })).json(),
+    );
   const replace = (accessToken: string, payload: object) =>
     app().inject({ method: 'PUT', url: '/vault/passkey', headers: bearer(accessToken), payload });
 

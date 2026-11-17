@@ -3,7 +3,15 @@ import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
 import * as sodium from 'react-native-libsodium';
 import { HealthResponse, selfTest } from '@cw/shared';
 import { isSignedIn, signIn, signOut } from '../src/api/client';
-import { createVault, forgetVaultKey, getVaultStatus, hasServerVault, recoverVault } from '../src/vault/vault';
+import {
+  checkPasskey,
+  createVault,
+  forgetVaultKey,
+  getVaultStatus,
+  hasServerVault,
+  recoverVault,
+  repairPasskey,
+} from '../src/vault/vault';
 
 // Set in apps/mobile/.env (see .env.example). In development it is the tunnel URL of the local server.
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -14,17 +22,22 @@ export default function Home() {
   const [status, setStatus] = useState('Checking the server…');
   const [crypto, setCrypto] = useState('Running the crypto self-test…');
   const [vault, setVault] = useState('Checking the vault…');
+  const [passkeyMissing, setPasskeyMissing] = useState(false);
   const [log, setLog] = useState<string[]>([]);
 
   const refreshVault = useCallback(async () => {
     try {
+      // The silent check runs first and needs no network (decision 035).
+      const passkey = await checkPasskey().catch((err) => `check failed: ${String(err)}`);
+      setPasskeyMissing(passkey === 'missing');
       const signedIn = await isSignedIn();
       const local = await getVaultStatus();
       const server = signedIn ? ((await hasServerVault()) ? 'present' : 'missing') : 'sign in to check';
       setVault(
         `Signed in: ${signedIn ? 'yes' : 'no'}\n` +
           `Vault key on this phone: ${local.hasVaultKey ? `present (id ${local.keyId})` : 'missing'}\n` +
-          `Vault on the server: ${server}`,
+          `Vault on the server: ${server}\n` +
+          `Passkey (silent check): ${passkey}`,
       );
     } catch (err) {
       setVault(`Vault: ERROR ${String(err)}`);
@@ -72,6 +85,15 @@ export default function Home() {
       <Text style={styles.text}>{crypto}</Text>
 
       <Text style={styles.heading}>Vault (development)</Text>
+      {passkeyMissing && (
+        <View style={styles.banner}>
+          <Text style={styles.bannerText}>Your backup was deleted. Repair it so the wallet can be recovered on a new phone.</Text>
+          <Button
+            title="Repair backup"
+            onPress={run('Repair backup', async () => `OK, same key id ${(await repairPasskey()).keyId}, new passkey`)}
+          />
+        </View>
+      )}
       <Text style={styles.text}>{vault}</Text>
       <View style={styles.buttons}>
         <Button title="Sign in with Google" onPress={run('Sign in', async () => (await signIn(), 'OK'))} />
@@ -105,6 +127,8 @@ const styles = StyleSheet.create({
   heading: { fontSize: 18, fontWeight: '600', marginTop: 16 },
   text: { fontSize: 16 },
   buttons: { gap: 8 },
+  banner: { backgroundColor: '#FDECEA', borderRadius: 8, padding: 12, gap: 8 },
+  bannerText: { fontSize: 15, color: '#7A1C14' },
   log: { marginTop: 8 },
   logLine: { fontFamily: 'monospace', fontSize: 12, marginBottom: 4 },
 });

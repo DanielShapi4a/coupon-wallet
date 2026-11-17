@@ -2,7 +2,7 @@ import * as Passkeys from 'react-native-passkeys';
 
 // Until the product domain is chosen (decision 036), passkeys are bound to the GitHub Pages site
 // that serves assetlinks.json for this app.
-const RP_ID = 'danielshapi4a.github.io';
+export const RP_ID = 'danielshapi4a.github.io';
 
 // Decision 035: the name is the warning. It shows in Google Password Manager, where the passkey can be deleted.
 export const PASSKEY_NAME = 'Coupon Wallet key — do not delete';
