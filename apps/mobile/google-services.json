@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "127129126820",
+    "project_id": "coupon-wallet-8c177",
+    "storage_bucket": "coupon-wallet-8c177.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:127129126820:android:193fd3b753fa792131a331",
+        "android_client_info": {
+          "package_name": "io.github.danielshapi4a.couponwallet.dev"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHHPkrNeqaovltzbmP7iMVENf8Om7gPTc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
