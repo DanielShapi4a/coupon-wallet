@@ -23,4 +23,5 @@
 - **[adr/ADR-003-hosting.md](adr/ADR-003-hosting.md):** אירוח ב־`AWS` בפרנקפורט, ‏$0 עד הפרסום.
 - **[threat-model.md](threat-model.md):** מודל האיומים בשיטת `STRIDE`, והסיכונים שמקבלים בשלב 1.
 - **[spikes/spike-01-key-recovery.md](spikes/spike-01-key-recovery.md):** ניסוי טכני 01, שחזור מפתחות. התוכנית, יומן ההתקדמות והתוצאות. הקוד נשאר ב־`branch` בשם `spike/key-recovery`.
+- **[spikes/spike-02-fcm.md](spikes/spike-02-fcm.md):** ניסוי טכני 02, התראות `FCM` בלי תוכן. הקוד ב־`branch` בשם `spike/fcm`.
 - **[decision-log.md](decision-log.md):** כל ההחלטות, לפי הסדר.
