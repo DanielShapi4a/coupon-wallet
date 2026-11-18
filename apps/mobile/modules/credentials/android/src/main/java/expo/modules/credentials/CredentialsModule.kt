@@ -21,10 +21,19 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 // Our own thin bridge to Android Credential Manager (decision 041): Sign in with Google,
-// and the silent passkey check (decision 035).
+// and the silent passkey check (decision 035). Also hides the app from the recent-apps view (RED-7).
 class CredentialsModule : Module() {
   override fun definition() = ModuleDefinition {
     Name("Credentials")
+
+    // RED-7 (decision 042): no app preview in the recent-apps view. Unlike FLAG_SECURE, the user can
+    // still take screenshots. Android 13+ (API 33); the app's minimum is 14 (decision 037).
+    // ponytail: set once at startup; if the activity is ever recreated, also call it from OnActivityEntersForeground.
+    Function("hideFromRecents") {
+      val activity = appContext.currentActivity
+      activity?.runOnUiThread { activity.setRecentsScreenshotEnabled(false) }
+      activity != null
+    }
 
     // Shows Google's account picker and returns a Google ID token for the server to verify.
     // webClientId is the Web OAuth client: the audience the server checks.

@@ -10,10 +10,12 @@
   "dependencies": {
     "@cw/shared": "*",
     "expo": "~57.0.33",
+    "expo-build-properties": "~57.0.23",
     "expo-clipboard": "~57.0.2",
     "expo-constants": "~57.0.24",
     "expo-dev-client": "~57.0.21",
     "expo-linking": "~57.0.14",
+    "expo-local-authentication": "~57.0.3",
     "expo-router": "~57.0.31",
     "expo-secure-store": "~57.0.4",
     "expo-sqlite": "~57.0.5",
