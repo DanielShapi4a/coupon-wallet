@@ -32,8 +32,8 @@
 - **ממצא: אחרי החלקה, ב־`development build` הקוד לא רץ.** ב־`release build` (פרופיל `preview` ב־`eas.json`) הוא רץ. הסיבה, הנחה: ה־`development build` טוען את ה־`JavaScript` מ־`Metro`.
 - **ממצא: `Firebase` יצר פרויקט נפרד,** ‏`coupon-wallet-8c177`, מלבד פרויקט ה־`OAuth`. מחליטים לפני הבודק הראשון אם לאחד.
 - **ממצא: `GitHub` התריע על מפתח `API` ב־`google-services.json`.** לפי החלטה 044, זה מזהה ציבורי שנכנס לכל `APK`. ההגנה היא בהגבלות של המפתח ובפרויקט בלי חיוב.
-  - **לאימות בקונסולה:** הפרויקט במסלול `Spark`, ה־`Generative Language API` לא מופעל, והמפתח מוגבל ל־`API` של `Firebase`.
-  - **ההתראה ב־`GitHub`:** נסגרת כ־"Won't fix", אחרי שהנוסח מאושר.
+  - **נבדק בקונסולה:** הפרויקט במסלול `Spark`, ה־`Generative Language API` לא מופעל, והמפתח מוגבל ל־`API` של `Firebase`.
+  - **ההתראה ב־`GitHub`:** נסגרה כ־"Won't fix", עם הסבר.
 - **נשאר: מצב 5, לילה עם מסך כבוי (`Doze`).**
   - בלילה הטלפון לא בטעינה, מונח בלי תזוזה, והאפליקציה לא נפתחת. ‏`Doze` לא מתחיל בזמן טעינה (עובדה, מדריך `Doze` של `Android`).
   - בבוקר, לפני שנוגעים בטלפון, שולחים מהמחשב: ב־`spike/fcm`, ‏`FCM_SERVICE_ACCOUNT=<key.json> node spikes/fcm/send.mts <token> data`.
