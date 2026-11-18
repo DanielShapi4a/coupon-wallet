@@ -649,6 +649,33 @@
   - **`crypto-shredding`:** מחיקת המפתח העטוף הופכת כל עותק של המידע המוצפן לחסר ערך.
   - **`token` חתום בלי מצב בשרת,** כמו `JWT`, לא מתבטל מעצמו כשהחשבון נמחק. צריך לבדוק את קיום החשבון, או לחכות שהוא יפוג.
 
+## החלטה 044: מפתח ה־`API` של `Firebase` הוא מזהה ציבורי, וההגנה היא בהגבלות שלו
+
+- **סטטוס:** מקובלת (2026-11-18). עלתה בניסוי 02.
+- **הבעיה:** ‏`GitHub` התריע על `Google API Key` בקובץ `google-services.json`, ב־`branch` בשם `spike/fcm` (ה־`commit` ‏`366743d`). הבנייה עם `FCM` צריכה את הקובץ, ולכן הוא יגיע גם ל־`main`.
+- **עובדות:**
+  - לפי `Firebase`, המפתח רק מזהה את הפרויקט ואת האפליקציה מול השירותים של `Firebase`. ההרשאות נקבעות במקום אחר ([`Firebase`](https://firebase.google.com/docs/projects/api-keys)).
+  - לפי `Expo`, מותר לשמור את הקובץ ב־`git`. מפתח ה־`service account` חייב להישאר מחוץ לו ([`Expo`](https://docs.expo.dev/push-notifications/fcm-credentials/)).
+  - המפתח נכנס לכל `APK`. סוד ב־`EAS` לא מוסיף הגנה לערך שנכנס לאפליקציה ([`Expo`](https://docs.expo.dev/eas/environment-variables/)).
+  - מאז מאי 2024, ‏`Firebase` מגביל את המפתחות שהוא יוצר ל־`API` של `Firebase` בלבד ([`Firebase`](https://firebase.google.com/docs/projects/api-keys)).
+  - ב־2025 וב־2026 התברר שמפתח `Google` לא מוגבל יכול לקרוא ל־`Gemini` כשה־`Generative Language API` מופעל בפרויקט שלו. היו חיובים גבוהים בעקבות זה ([`Truffle Security`](https://trufflesecurity.com/blog/google-api-keys-werent-secrets-but-then-gemini-changed-the-rules)).
+  - לפי `Google`, קל לעקוף הגבלה של מפתח לאפליקציית `Android` ([`Google Cloud`](https://cloud.google.com/docs/authentication/api-keys)).
+- **החלטה:**
+  - **הקובץ נשאר ב־`git`,** והמפתח שבו נחשב מזהה ציבורי.
+  - **ההגנה:** הפרויקט במסלול `Spark`, בלי חיוב. ה־`Generative Language API` לא מופעל בו, והמפתח מוגבל ל־`API` של `Firebase` בלבד. לאימות בקונסולה.
+  - **ההגבלות של המפתח נשארות כפי ש־`Firebase` קבע.** צמצום לארבעת ה־`API` ש־`FCM` צריך, והגבלה לאפליקציה, נבחנים בסקירת האבטחה לפני הבודק הראשון.
+  - **ההתראה ב־`GitHub`** נסגרת כ־"Won't fix", עם הסבר.
+  - **אם יהיה צורך ב־`Gemini`,** הוא יקבל מפתח נפרד בשרת, ולעולם לא את המפתח הזה.
+- **חלופות:**
+  - **להוציא את הקובץ מ־`git` ולשמור אותו כסוד ב־`EAS`:** נדחתה. המפתח נמצא ב־`APK` בכל מקרה, וזה רק מסבך את הבנייה.
+  - **לכתוב מחדש את ההיסטוריה של `git`:** נדחתה מאותה סיבה. גם `GitHub` כותב שזה לא תמיד מוצדק ([`GitHub`](https://docs.github.com/en/authentication/keeping-your-account-and-data-secure/removing-sensitive-data-from-a-repository)).
+  - **להחליף את המפתח:** נדחתה. גם מפתח חדש נכנס ל־`APK`.
+  - **לצמצם ולהגביל את המפתח עכשיו:** נדחתה בינתיים. ‏`API` חסר או `SHA-1` חסר מפילים את ההתראות בלי הודעת שגיאה ברורה ([`Expo`](https://docs.expo.dev/push-notifications/fcm-credentials/)), וזה היה מבלבל את ניסוי 02.
+- **מחיר:**
+  - מי שמחלץ את המפתח יכול לקרוא איתו ל־`API` של `Firebase` שברשימה. בפרויקט בלי מוצרי `Firebase` נוספים ובלי חיוב, הנזק מוגבל לרעש (הנחה).
+  - כל `API` שמופעל בפרויקט משנה את הסיכון. לכן בודקים את המפתח בכל שינוי כזה, וגם אם מאחדים את הפרויקט עם פרויקט ה־`OAuth` (ממצא בניסוי 02).
+- **מה לומדים:** "לא סוד" היא לא תכונה קבועה של מפתח. היא תלויה במה שמופעל בפרויקט שלו.
+
 ---
 
 ## החלטות 021–024: המלצות שאושרו (2026-10-09)
