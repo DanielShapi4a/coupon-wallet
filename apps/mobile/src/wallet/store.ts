@@ -108,6 +108,15 @@ export async function replaceAll(items: SealedItem[]): Promise<void> {
   });
 }
 
+/** Account deletion (AUTH-6): the local wallet goes too. The rows are sealed, and the vault key is deleted with them. */
+export async function wipe(): Promise<void> {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync('DELETE FROM items');
+    await db.runAsync('DELETE FROM outbox');
+  });
+}
+
 export async function countPending(): Promise<number> {
   const row = await (await getDb()).getFirstAsync<{ n: number }>('SELECT COUNT(DISTINCT item_id) AS n FROM outbox');
   return row?.n ?? 0;

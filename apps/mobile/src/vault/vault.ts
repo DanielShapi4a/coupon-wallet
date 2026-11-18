@@ -1,7 +1,19 @@
 import * as sodium from 'react-native-libsodium';
-import { Challenge, createVaultCrypto, PRF_SALT, replacePasskeyMessage, Vault, type VaultCrypto } from '@cw/shared';
+import {
+  Challenge,
+  createVaultCrypto,
+  deleteAccountMessage,
+  PRF_SALT,
+  replacePasskeyMessage,
+  Vault,
+  type ChallengePurpose,
+  type ChallengeRequest,
+  type DeleteAccountRequest,
+  type VaultCrypto,
+} from '@cw/shared';
 import { hasPasskey } from '../../modules/credentials';
-import { apiFetch, ApiError } from '../api/client';
+import { apiFetch, ApiError, dropLocalSession } from '../api/client';
+import { wipe as wipeWallet } from '../wallet/store';
 import { createPasskey, getPrfOutput, RP_ID } from './passkey';
 import * as storage from './storage';
 
@@ -123,10 +135,7 @@ export async function repairPasskey(): Promise<{ keyId: string }> {
     passkeyCredentialId: created.credentialId,
   };
 
-  // An empty JSON object: Fastify rejects an empty body sent as application/json.
-  const challengeRes = await apiFetch('/vault/challenge', { method: 'POST', body: '{}' });
-  if (!challengeRes.ok) throw new ApiError(challengeRes.status, 'Could not get a challenge from the server');
-  const { challengeId, challenge } = Challenge.parse(await challengeRes.json());
+  const { challengeId, challenge } = await getChallenge('replace_passkey');
   const signature = vc.signWithVaultKey(vaultKey, replacePasskeyMessage({ challenge, ...content }));
 
   const res = await apiFetch('/vault/passkey', {
@@ -136,6 +145,40 @@ export async function repairPasskey(): Promise<{ keyId: string }> {
   if (!res.ok) throw new ApiError(res.status, 'The server did not accept the new passkey');
   await storage.savePasskeyCredentialId(created.credentialId);
   return { keyId: await keyId(vaultKey) };
+}
+
+/** A one-time challenge for an action the vault key must sign (decision 033). */
+async function getChallenge(purpose: ChallengePurpose): Promise<Challenge> {
+  const body: ChallengeRequest = { purpose };
+  const res = await apiFetch('/vault/challenge', { method: 'POST', body: JSON.stringify(body) });
+  if (!res.ok) throw new ApiError(res.status, 'Could not get a challenge from the server');
+  return Challenge.parse(await res.json());
+}
+
+/**
+ * AUTH-6 (decision 043): deletes the account on the server first, then everything on this phone, so a
+ * failure on the server leaves the phone as it was. With a vault, the server needs the vault key's
+ * signature over a one-time challenge (decision 033). The caller confirms with the person and
+ * authenticates the phone before calling this.
+ */
+export async function deleteAccount(): Promise<void> {
+  const stored = await storage.loadVaultKey();
+  // An empty JSON object when there is no vault key: Fastify rejects an empty body sent as application/json.
+  let body = '{}';
+  if (stored) {
+    const { challengeId, challenge } = await getChallenge('delete_account');
+    const signature = (await getVaultCrypto()).signWithVaultKey(decode(stored), deleteAccountMessage(challenge));
+    body = JSON.stringify({ challengeId, signature } satisfies DeleteAccountRequest);
+  }
+  const res = await apiFetch('/account', { method: 'DELETE', body });
+  // The account has a vault, but this phone does not hold its key.
+  if (res.status === 400) throw new Error('Recover the vault on this phone first, then delete the account');
+  if (res.status !== 204) throw new ApiError(res.status, 'The server did not delete the account');
+
+  await wipeWallet();
+  await storage.deleteVaultKey();
+  await storage.deletePasskeyCredentialId();
+  await dropLocalSession();
 }
 
 /** Development only: drops the vault key from this phone, as after a reinstall. */

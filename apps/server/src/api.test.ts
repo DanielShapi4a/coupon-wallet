@@ -3,7 +3,7 @@ import { SignJWT } from 'jose';
 import { sql, type Kysely } from 'kysely';
 import pg from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { AuthTokens, Challenge, replacePasskeyMessage, type Vault } from '@cw/shared';
+import { AuthTokens, Challenge, deleteAccountMessage, replacePasskeyMessage, type ChallengePurpose, type Vault } from '@cw/shared';
 import { buildApp } from './app.ts';
 import { cleanup } from './cleanup.ts';
 import { createDb, migrateToLatest, type Database } from './db.ts';
@@ -157,34 +157,46 @@ describe('/vault', () => {
   });
 });
 
+// Stands in for the vault's signing key pair; the app derives it from the vault key (decision 033).
+const newSigningKey = () => {
+  const { publicKey, privateKey } = generateKeyPairSync('ed25519');
+  return { privateKey, publicKey: publicKey.export({ format: 'jwk' }).x as string };
+};
+
+/** A signed-in user with a vault whose signing public key is `key.publicKey`. */
+async function userWithVault(sub: string, key = newSigningKey()) {
+  const { accessToken, refreshToken } = await signIn(sub);
+  await app().inject({
+    method: 'PUT',
+    url: '/vault',
+    headers: bearer(accessToken),
+    payload: { ...vault, signingPublicKey: key.publicKey },
+  });
+  return { accessToken, refreshToken, key };
+}
+
+const getChallenge = async (accessToken: string, purpose: ChallengePurpose = 'replace_passkey') =>
+  Challenge.parse(
+    (await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken), payload: { purpose } })).json(),
+  );
+
+describe('POST /vault/challenge', () => {
+  it('needs a known purpose', async () => {
+    const { accessToken } = await signIn('sub-1');
+    const post = (payload: object) => app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken), payload });
+    expect((await post({})).statusCode).toBe(400);
+    expect((await post({ purpose: 'anything' })).statusCode).toBe(400);
+    expect((await post({ purpose: 'delete_account' })).statusCode).toBe(200);
+  });
+});
+
 describe('PUT /vault/passkey (self-repair, signed with the vault key)', () => {
-  // Stands in for the vault's signing key pair; the app derives it from the vault key (decision 033).
-  const newSigningKey = () => {
-    const { publicKey, privateKey } = generateKeyPairSync('ed25519');
-    return { privateKey, publicKey: publicKey.export({ format: 'jwk' }).x as string };
-  };
   const signBody = (privateKey: KeyObject, challenge: string, content: { wrappedVaultKey: string; passkeyCredentialId: string }) =>
     sign(null, Buffer.from(replacePasskeyMessage({ challenge, ...content })), privateKey).toString('base64url');
 
   const replacement = { wrappedVaultKey: 'C'.repeat(98), passkeyCredentialId: 'new-credential' };
 
-  /** A signed-in user with a vault whose signing public key is `key.publicKey`. */
-  async function userWithVault(sub: string, key = newSigningKey()) {
-    const { accessToken } = await signIn(sub);
-    await app().inject({
-      method: 'PUT',
-      url: '/vault',
-      headers: bearer(accessToken),
-      payload: { ...vault, signingPublicKey: key.publicKey },
-    });
-    return { accessToken, key };
-  }
-  // Sent the way the app sends it: a JSON content type with an empty object.
-  const getChallenge = async (accessToken: string) =>
-    Challenge.parse(
-      (await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(accessToken), payload: {} })).json(),
-    );
-  const replace = (accessToken: string, payload: object) =>
+  const replace =(accessToken: string, payload: object) =>
     app().inject({ method: 'PUT', url: '/vault/passkey', headers: bearer(accessToken), payload });
 
   it('replaces the wrapped key and the passkey ID with a valid signature', async () => {
@@ -269,8 +281,8 @@ describe('cleanup (worker)', () => {
     await db.updateTable('refresh_tokens').set({ expires_at: new Date(Date.now() - 1000) })
       .where('user_id', 'in', db.selectFrom('users').select('id').where('google_sub', '=', 'sub-2'))
       .execute();
-    await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(live.accessToken), payload: {} });
-    await app().inject({ method: 'POST', url: '/vault/challenge', headers: bearer(live.accessToken), payload: {} });
+    await getChallenge(live.accessToken);
+    await getChallenge(live.accessToken, 'delete_account');
     const [old] = await db.selectFrom('challenges').select('id').execute();
     await db.updateTable('challenges').set({ expires_at: new Date(Date.now() - 2 * 60 * 60 * 1000) }).where('id', '=', old!.id).execute();
 
@@ -279,30 +291,146 @@ describe('cleanup (worker)', () => {
   });
 });
 
-describe('/items', () => {
-  const ID = '0b7c8a52-3f7e-4c1a-9d2b-5e6f7a8b9c0d';
-  // The server never sees plaintext secrets: these stand in for sealed ciphertext.
-  const sealed = (over: Record<string, unknown> = {}) => ({
-    id: ID,
-    version: 1,
-    deleted: false,
-    metadata: {
-      merchant: 'Swish',
-      value: { kind: 'stored_value', initialAgorot: 10_000, remainingAgorot: 10_000, lastVerifiedAt: null },
-      status: 'active',
-      usage: 'multi',
-      channel: 'store',
-      transferable: 'unknown',
-      receivedFrom: null,
-      receivedAt: null,
-      validFrom: null,
-      validUntil: '2026-12-31T23:59:59+02:00',
-    },
-    credential: 'Q1JFREVOVElBTA',
-    details: 'REVUQUlMUw',
-    ...over,
+const ID = '0b7c8a52-3f7e-4c1a-9d2b-5e6f7a8b9c0d';
+// The server never sees plaintext secrets: these stand in for sealed ciphertext.
+const sealed = (over: Record<string, unknown> = {}) => ({
+  id: ID,
+  version: 1,
+  deleted: false,
+  metadata: {
+    merchant: 'Swish',
+    value: { kind: 'stored_value', initialAgorot: 10_000, remainingAgorot: 10_000, lastVerifiedAt: null },
+    status: 'active',
+    usage: 'multi',
+    channel: 'store',
+    transferable: 'unknown',
+    receivedFrom: null,
+    receivedAt: null,
+    validFrom: null,
+    validUntil: '2026-12-31T23:59:59+02:00',
+  },
+  credential: 'Q1JFREVOVElBTA',
+  details: 'REVUQUlMUw',
+  ...over,
+});
+
+describe('DELETE /account (AUTH-6, signed with the vault key)', () => {
+  const signDeletion = (privateKey: KeyObject, challenge: string) =>
+    sign(null, Buffer.from(deleteAccountMessage(challenge)), privateKey).toString('base64url');
+  const deleteAccount = (accessToken: string, payload: object) =>
+    app().inject({ method: 'DELETE', url: '/account', headers: bearer(accessToken), payload });
+
+  /** A user with a vault and one item. */
+  async function userWithItem(sub: string) {
+    const user = await userWithVault(sub);
+    const put = await app().inject({ method: 'PUT', url: `/items/${ID}`, headers: bearer(user.accessToken), payload: sealed() });
+    expect(put.statusCode).toBe(200);
+    return user;
+  }
+  const rowsOf = async (userId: string) => ({
+    users: (await db.selectFrom('users').select('id').where('id', '=', userId).execute()).length,
+    vaults: (await db.selectFrom('vaults').select('user_id').where('user_id', '=', userId).execute()).length,
+    items: (await db.selectFrom('items').select('id').where('user_id', '=', userId).execute()).length,
+    sessions: (await db.selectFrom('refresh_tokens').select('user_id').where('user_id', '=', userId).execute()).length,
+    challenges: (await db.selectFrom('challenges').select('id').where('user_id', '=', userId).execute()).length,
   });
-  const put = (accessToken: string, body: Record<string, unknown>, id = body.id as string, maxItems?: number) =>
+  const userIdOf = (accessToken: string) => JSON.parse(Buffer.from(accessToken.split('.')[1]!, 'base64url').toString()).sub as string;
+
+  it('deletes everything of the user with a valid signature, and the tokens stop working at once', async () => {
+    const { accessToken, refreshToken, key } = await userWithItem('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken, 'delete_account');
+    const res = await deleteAccount(accessToken, { challengeId, signature: signDeletion(key.privateKey, challenge) });
+    expect(res.statusCode).toBe(204);
+
+    expect(await rowsOf(userIdOf(accessToken))).toEqual({ users: 0, vaults: 0, items: 0, sessions: 0, challenges: 0 });
+    // The access token is still unexpired, but the user is gone (decision 043).
+    expect((await app().inject({ method: 'GET', url: '/items', headers: bearer(accessToken) })).statusCode).toBe(401);
+    expect((await app().inject({ method: 'POST', url: '/auth/refresh', payload: { refreshToken } })).statusCode).toBe(401);
+  });
+
+  it("leaves other users' accounts and items untouched", async () => {
+    const alice = await userWithItem('alice');
+    const bob = await userWithItem('bob');
+    const { challengeId, challenge } = await getChallenge(alice.accessToken, 'delete_account');
+    expect((await deleteAccount(alice.accessToken, { challengeId, signature: signDeletion(alice.key.privateKey, challenge) })).statusCode).toBe(204);
+
+    expect(await rowsOf(userIdOf(bob.accessToken))).toMatchObject({ users: 1, vaults: 1, items: 1 });
+    expect((await app().inject({ method: 'GET', url: '/items', headers: bearer(bob.accessToken) })).statusCode).toBe(200);
+  });
+
+  it('signing in again after deletion starts a new, empty account', async () => {
+    const { accessToken, key } = await userWithItem('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken, 'delete_account');
+    await deleteAccount(accessToken, { challengeId, signature: signDeletion(key.privateKey, challenge) });
+
+    const again = await signIn('sub-1');
+    expect(userIdOf(again.accessToken)).not.toBe(userIdOf(accessToken));
+    expect((await app().inject({ method: 'GET', url: '/vault', headers: bearer(again.accessToken) })).statusCode).toBe(404);
+  });
+
+  it('rejects a signature made with another key, and keeps the account', async () => {
+    const alice = await userWithItem('alice');
+    const { challengeId, challenge } = await getChallenge(alice.accessToken, 'delete_account');
+    const res = await deleteAccount(alice.accessToken, { challengeId, signature: signDeletion(newSigningKey().privateKey, challenge) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: 'invalid_signature' });
+    expect(await rowsOf(userIdOf(alice.accessToken))).toMatchObject({ users: 1, vaults: 1, items: 1 });
+  });
+
+  it("rejects another user's challenge, even signed with that user's key", async () => {
+    const alice = await userWithItem('alice');
+    const bob = await userWithItem('bob');
+    const { challengeId, challenge } = await getChallenge(bob.accessToken, 'delete_account');
+    const res = await deleteAccount(alice.accessToken, { challengeId, signature: signDeletion(bob.key.privateKey, challenge) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: 'invalid_challenge' });
+    expect(await rowsOf(userIdOf(alice.accessToken))).toMatchObject({ users: 1 });
+    expect(await rowsOf(userIdOf(bob.accessToken))).toMatchObject({ users: 1 });
+  });
+
+  it('rejects a challenge issued for replacing the passkey', async () => {
+    const { accessToken, key } = await userWithItem('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken, 'replace_passkey');
+    const res = await deleteAccount(accessToken, { challengeId, signature: signDeletion(key.privateKey, challenge) });
+    expect(res.statusCode).toBe(401);
+    expect(res.json()).toEqual({ error: 'invalid_challenge' });
+  });
+
+  it('rejects a signature over another action’s message', async () => {
+    const { accessToken, key } = await userWithItem('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken, 'delete_account');
+    const content = { wrappedVaultKey: 'C'.repeat(98), passkeyCredentialId: 'x' };
+    const signature = sign(null, Buffer.from(replacePasskeyMessage({ challenge, ...content })), key.privateKey).toString('base64url');
+    expect((await deleteAccount(accessToken, { challengeId, signature })).statusCode).toBe(401);
+  });
+
+  it('uses a challenge up after one try', async () => {
+    const { accessToken, key } = await userWithItem('sub-1');
+    const { challengeId, challenge } = await getChallenge(accessToken, 'delete_account');
+    await deleteAccount(accessToken, { challengeId, signature: signDeletion(newSigningKey().privateKey, challenge) });
+    const res = await deleteAccount(accessToken, { challengeId, signature: signDeletion(key.privateKey, challenge) });
+    expect(res.json()).toEqual({ error: 'invalid_challenge' });
+  });
+
+  it('needs the signature when there is a vault', async () => {
+    const { accessToken } = await userWithItem('sub-1');
+    expect((await deleteAccount(accessToken, {})).statusCode).toBe(400);
+    expect(await rowsOf(userIdOf(accessToken))).toMatchObject({ users: 1 });
+  });
+
+  it('deletes an account without a vault with the access token alone', async () => {
+    const { accessToken } = await signIn('no-vault');
+    expect((await deleteAccount(accessToken, {})).statusCode).toBe(204);
+    expect(await rowsOf(userIdOf(accessToken))).toMatchObject({ users: 0, sessions: 0 });
+  });
+
+  it('needs a valid access token', async () => {
+    expect((await deleteAccount('not-a-token', {})).statusCode).toBe(401);
+  });
+});
+
+describe('/items', () => {
+  const put =(accessToken: string, body: Record<string, unknown>, id = body.id as string, maxItems?: number) =>
     app(maxItems).inject({ method: 'PUT', url: `/items/${id}`, headers: bearer(accessToken), payload: body });
   const list = async (accessToken: string) =>
     (await app().inject({ method: 'GET', url: '/items', headers: bearer(accessToken) })).json() as { id: string; version: number }[];

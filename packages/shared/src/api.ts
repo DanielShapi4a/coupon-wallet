@@ -44,3 +44,14 @@ export type ReplacePasskeyRequest = z.infer<typeof ReplacePasskeyRequest>;
  */
 export const replacePasskeyMessage = (r: { challenge: string; wrappedVaultKey: string; passkeyCredentialId: string }) =>
   ['cw-replace-passkey-v1', r.challenge, r.wrappedVaultKey, r.passkeyCredentialId].join('|');
+
+/** What a challenge is for. Each purpose also signs its own message, so one cannot stand in for another. */
+export const ChallengePurpose = z.enum(['replace_passkey', 'delete_account']);
+export type ChallengePurpose = z.infer<typeof ChallengePurpose>;
+export const ChallengeRequest = z.object({ purpose: ChallengePurpose });
+export type ChallengeRequest = z.infer<typeof ChallengeRequest>;
+
+/** Account deletion from the app (AUTH-6, decision 043): the vault key signs a one-time challenge. */
+export const DeleteAccountRequest = z.object({ challengeId: z.uuid(), signature: ReplacePasskeyRequest.shape.signature });
+export type DeleteAccountRequest = z.infer<typeof DeleteAccountRequest>;
+export const deleteAccountMessage = (challenge: string) => ['cw-delete-account-v1', challenge].join('|');

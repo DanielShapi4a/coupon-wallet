@@ -2,12 +2,16 @@ import { randomBytes } from 'node:crypto';
 import Fastify, { type FastifyReply, type FastifyRequest, type FastifyServerOptions } from 'fastify';
 import { sql, type Kysely } from 'kysely';
 import {
+  ChallengeRequest,
+  DeleteAccountRequest,
+  deleteAccountMessage,
   GoogleSignInRequest,
   RefreshRequest,
   ReplacePasskeyRequest,
   replacePasskeyMessage,
   Vault,
   type Challenge,
+  type ChallengePurpose,
   type HealthResponse,
 } from '@cw/shared';
 import type { Database } from './db.ts';
@@ -17,7 +21,6 @@ import { verifyEd25519 } from './signatures.ts';
 import { issueTokens, revokeRefreshToken, rotateRefreshToken, verifyAccessToken } from './tokens.ts';
 
 const CHALLENGE_TTL_MS = 5 * 60 * 1000;
-const REPLACE_PASSKEY = 'replace_passkey';
 
 export interface AppDeps {
   checkDb: () => Promise<void>;
@@ -49,8 +52,29 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
   async function requireUser(req: FastifyRequest, reply: FastifyReply): Promise<string | null> {
     const header = req.headers.authorization;
     const userId = header?.startsWith('Bearer ') ? await verifyAccessToken(header.slice(7), jwtSecret) : null;
-    if (!userId) unauthorized(reply);
+    // An access token outlives a deleted account by up to 15 minutes; checking the user makes the
+    // deletion take effect at once (decision 043).
+    const exists = userId && (await db.selectFrom('users').select('id').where('id', '=', userId).executeTakeFirst());
+    if (!exists) {
+      unauthorized(reply);
+      return null;
+    }
     return userId;
+  }
+
+  /** Uses up a challenge: once, for this user and purpose, before it expires. Its value, or null. */
+  async function consumeChallenge(userId: string, challengeId: string, purpose: ChallengePurpose): Promise<string | null> {
+    const row = await db
+      .updateTable('challenges')
+      .set({ used_at: new Date() })
+      .where('id', '=', challengeId)
+      .where('user_id', '=', userId)
+      .where('purpose', '=', purpose)
+      .where('used_at', 'is', null)
+      .where('expires_at', '>', new Date())
+      .returning('challenge')
+      .executeTakeFirst();
+    return row?.challenge ?? null;
   }
 
   app.get('/health', async (_req, reply): Promise<HealthResponse> => {
@@ -134,14 +158,17 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
     return reply.code(201).send(body.data);
   });
 
-  // A one-time challenge to replace the vault's passkey (self-repair, decision 035).
+  // A one-time challenge for an action that needs the vault key's signature (decision 033): replacing
+  // the passkey (self-repair, decision 035) or deleting the account (decision 043).
   app.post('/vault/challenge', async (req, reply) => {
     const userId = await requireUser(req, reply);
     if (!userId) return;
+    const body = ChallengeRequest.safeParse(req.body);
+    if (!body.success) return badRequest(reply);
     const challenge = randomBytes(32).toString('base64url');
     const row = await db
       .insertInto('challenges')
-      .values({ user_id: userId, purpose: REPLACE_PASSKEY, challenge, expires_at: new Date(Date.now() + CHALLENGE_TTL_MS) })
+      .values({ user_id: userId, purpose: body.data.purpose, challenge, expires_at: new Date(Date.now() + CHALLENGE_TTL_MS) })
       .returning('id')
       .executeTakeFirstOrThrow();
     return { challengeId: row.id, challenge } satisfies Challenge;
@@ -163,21 +190,11 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
       .executeTakeFirst();
     if (!vault) return reply.code(404).send({ error: 'not_found' });
 
-    // Consume the challenge atomically: it works once, for this user and purpose, before it expires.
-    // A wrong signature still uses it up; the app asks for a new one.
-    const challenge = await db
-      .updateTable('challenges')
-      .set({ used_at: new Date() })
-      .where('id', '=', body.data.challengeId)
-      .where('user_id', '=', userId)
-      .where('purpose', '=', REPLACE_PASSKEY)
-      .where('used_at', 'is', null)
-      .where('expires_at', '>', new Date())
-      .returning('challenge')
-      .executeTakeFirst();
+    // A wrong signature still uses the challenge up; the app asks for a new one.
+    const challenge = await consumeChallenge(userId, body.data.challengeId, 'replace_passkey');
     if (!challenge) return reply.code(401).send({ error: 'invalid_challenge' });
 
-    const message = replacePasskeyMessage({ challenge: challenge.challenge, ...body.data });
+    const message = replacePasskeyMessage({ challenge, ...body.data });
     if (!verifyEd25519(vault.signing_public_key, message, body.data.signature)) {
       return reply.code(401).send({ error: 'invalid_signature' });
     }
@@ -196,6 +213,30 @@ export function buildApp(deps: AppDeps, options: FastifyServerOptions = {}) {
       signingPublicKey: vault.signing_public_key,
       passkeyCredentialId: body.data.passkeyCredentialId,
     } satisfies Vault;
+  });
+
+  // Account deletion from the app (AUTH-6, decision 043). With a vault, only a signature by the vault
+  // key over a one-time challenge deletes it (decision 033): someone who takes over the Google account
+  // cannot wipe the backup. Without a vault there is nothing to protect, and the access token is enough.
+  // Every table refers to users with ON DELETE CASCADE, so one delete removes the wrapped vault key
+  // (crypto-shredding), the items, the sessions and the challenges.
+  app.delete('/account', async (req, reply) => {
+    const userId = await requireUser(req, reply);
+    if (!userId) return;
+
+    const vault = await db.selectFrom('vaults').select('signing_public_key').where('user_id', '=', userId).executeTakeFirst();
+    if (vault) {
+      const body = DeleteAccountRequest.safeParse(req.body);
+      if (!body.success) return badRequest(reply);
+      const challenge = await consumeChallenge(userId, body.data.challengeId, 'delete_account');
+      if (!challenge) return reply.code(401).send({ error: 'invalid_challenge' });
+      if (!verifyEd25519(vault.signing_public_key, deleteAccountMessage(challenge), body.data.signature)) {
+        return reply.code(401).send({ error: 'invalid_signature' });
+      }
+    }
+
+    await db.deleteFrom('users').where('id', '=', userId).execute();
+    return reply.code(204).send();
   });
 
   registerItemRoutes(app, db, requireUser, deps.maxItemsPerUser ?? DEFAULT_MAX_ITEMS_PER_USER);

@@ -13,3 +13,4 @@ export const deleteVaultKey = () => SecureStore.deleteItemAsync(VAULT_KEY);
 
 export const loadPasskeyCredentialId = () => SecureStore.getItemAsync(PASSKEY_CREDENTIAL_ID);
 export const savePasskeyCredentialId = (id: string) => SecureStore.setItemAsync(PASSKEY_CREDENTIAL_ID, id);
+export const deletePasskeyCredentialId = () => SecureStore.deleteItemAsync(PASSKEY_CREDENTIAL_ID);

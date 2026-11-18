@@ -64,7 +64,7 @@ export async function signOut(): Promise<void> {
 }
 
 /** Drops the local session only, without telling the server (the server already ended it). */
-async function dropLocalSession(): Promise<void> {
+export async function dropLocalSession(): Promise<void> {
   accessToken = null;
   await SecureStore.deleteItemAsync(REFRESH_TOKEN);
 }

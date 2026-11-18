@@ -1,11 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Alert, Button, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as LocalAuthentication from 'expo-local-authentication';
 import * as sodium from 'react-native-libsodium';
 import { HealthResponse, selfTest } from '@cw/shared';
 import { isSignedIn, signIn, signOut } from '../src/api/client';
 import {
   checkPasskey,
   createVault,
+  deleteAccount,
   forgetVaultKey,
   getVaultStatus,
   hasServerVault,
@@ -16,6 +18,11 @@ import { restoreFromServer, syncNow } from '../src/wallet/wallet';
 
 // Set in apps/mobile/.env (see .env.example). In development it is the tunnel URL of the local server.
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
+
+// The app cannot delete the passkey itself before Android 15 (decision 043).
+const PASSKEY_HINT =
+  'One last step: delete the passkey "Coupon Wallet key — do not delete" for danielshapi4a.github.io ' +
+  'in Google Password Manager. It is useless now, because the server no longer has the wrapped key.';
 
 // Development screen: the server connection, the crypto self-test, sign-in and the vault flows.
 // The real screens are designed once the flows work.
@@ -55,6 +62,28 @@ export default function Home() {
     setLog((prev) => [line, ...prev]);
     await refreshVault();
   };
+
+  // AUTH-6 (decision 043): a confirmation, then the phone's own authentication, even inside the
+  // 5 minutes after unlocking (decision 042).
+  const confirmDeleteAccount = () =>
+    Alert.alert(
+      'Delete your account?',
+      'Every item and code is deleted from this phone and from the server, including the backup. This cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete account',
+          style: 'destructive',
+          onPress: run('Delete account', async () => {
+            const auth = await LocalAuthentication.authenticateAsync({ promptMessage: 'Confirm account deletion' });
+            if (!auth.success) return `not deleted (${auth.error})`;
+            await deleteAccount();
+            Alert.alert('Account deleted', PASSKEY_HINT);
+            return 'deleted on the server and on this phone';
+          }),
+        },
+      ],
+    );
 
   useEffect(() => {
     sodium.ready
@@ -122,6 +151,7 @@ export default function Home() {
         />
         <Button title="Forget key on this phone" onPress={run('Forget key', async () => (await forgetVaultKey(), 'done'))} />
         <Button title="Sign out" onPress={run('Sign out', async () => (await signOut(), 'done'))} />
+        <Button title="Delete account" color="#B3261E" onPress={confirmDeleteAccount} />
       </View>
       <ScrollView style={styles.log}>
         {log.map((line, i) => (
