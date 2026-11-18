@@ -63,6 +63,7 @@ export default function Wallet() {
                   <Text style={styles.meta}>
                     Valid until {dateLabel(item.metadata.validUntil)}
                     {states.length ? ` · ${states.map((s) => STATE_LABEL[s]).join(', ')}` : ''}
+                    {item.metadata.status === 'used' ? ' · used' : ''}
                   </Text>
                 </Pressable>
               );

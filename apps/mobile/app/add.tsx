@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { Stack, router } from 'expo-router';
-import { endOfDayInIsrael, parseShekels, type ItemMetadata, type ItemValue } from '@cw/shared';
+import { endOfDayInIsrael, maskDate, parseShekels, type ItemMetadata, type ItemValue } from '@cw/shared';
 import { addItem } from '../src/wallet/wallet';
 
 type Kind = ItemValue['kind'];
@@ -39,8 +39,9 @@ export default function AddItem() {
     if (!merchant.trim()) return setError('Enter the store or merchant');
     const value = buildValue();
     if (typeof value === 'string') return setError(value);
-    const until = validUntil.trim() ? endOfDayInIsrael(validUntil.trim()) : null;
-    if (validUntil.trim() && !until) return setError('Valid until must be a date like 2026-12-31');
+    // DD-MM-YYYY reversed is YYYY-MM-DD; endOfDayInIsrael rejects anything incomplete or not a real date.
+    const until = validUntil ? endOfDayInIsrael(validUntil.split('-').reverse().join('-')) : null;
+    if (validUntil && !until) return setError('Valid until must be a date like 31-12-2026');
 
     const metadata: ItemMetadata = {
       merchant: merchant.trim(),
@@ -79,7 +80,12 @@ export default function AddItem() {
       <Text style={styles.label}>Kind of value *</Text>
       <View style={styles.kinds}>
         {KINDS.map((k) => (
-          <Button key={k.kind} title={k.label} color={k.kind === kind ? undefined : '#999'} onPress={() => setKind(k.kind)} />
+          <Button
+            key={k.kind}
+            title={k.kind === kind ? `✓ ${k.label}` : k.label}
+            color={k.kind === kind ? undefined : '#999'}
+            onPress={() => setKind(k.kind)}
+          />
         ))}
       </View>
 
@@ -91,8 +97,15 @@ export default function AddItem() {
         keyboardType={kind === 'item_benefit' ? 'default' : 'decimal-pad'}
       />
 
-      <Text style={styles.label}>Valid until (YYYY-MM-DD)</Text>
-      <TextInput style={styles.input} value={validUntil} onChangeText={setValidUntil} placeholder="2026-12-31" />
+      <Text style={styles.label}>Valid until (DD-MM-YYYY)</Text>
+      <TextInput
+        style={styles.input}
+        value={validUntil}
+        onChangeText={(text) => setValidUntil(maskDate(text))}
+        placeholder="31-12-2026"
+        keyboardType="number-pad"
+        maxLength={10}
+      />
 
       <Text style={styles.label}>Code</Text>
       <TextInput style={styles.input} value={code} onChangeText={setCode} autoCapitalize="characters" autoCorrect={false} />

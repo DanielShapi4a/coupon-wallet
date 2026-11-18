@@ -61,6 +61,7 @@ export default function ItemScreen() {
       <Text style={styles.meta}>
         Valid until {dateLabel(metadata.validUntil)}
         {states.length ? ` · ${states.map((s) => STATE_LABEL[s]).join(', ')}` : ''}
+        {metadata.status === 'used' ? ' · used' : ''}
       </Text>
       {metadata.transferable === 'no' && <Text style={styles.meta}>Personal, not transferable (RED-6)</Text>}
 

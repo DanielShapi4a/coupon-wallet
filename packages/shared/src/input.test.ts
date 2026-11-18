@@ -1,5 +1,26 @@
 import { describe, expect, it } from 'vitest';
-import { endOfDayInIsrael, formatShekels, parseShekels, uuidV4 } from './input.ts';
+import { endOfDayInIsrael, formatShekels, maskDate, parseShekels, uuidV4 } from './input.ts';
+
+describe('maskDate', () => {
+  it('adds the dashes as the digits arrive, and never leaves a trailing dash', () => {
+    expect(['2', '20', '201', '2011', '20112', '20112026'].map(maskDate)).toEqual([
+      '2',
+      '20',
+      '20-1',
+      '20-11',
+      '20-11-2',
+      '20-11-2026',
+    ]);
+  });
+  it('drops anything that is not a digit, and stops at eight digits', () => {
+    expect(maskDate('20/11/2026')).toBe('20-11-2026');
+    expect(maskDate('20-11-20269')).toBe('20-11-2026');
+    expect(maskDate('')).toBe('');
+  });
+  it('lets a deleted digit stay deleted', () => {
+    expect(maskDate('20-1')).toBe('20-1');
+  });
+});
 
 describe('uuidV4', () => {
   it('formats 16 random bytes as a version 4 UUID', () => {

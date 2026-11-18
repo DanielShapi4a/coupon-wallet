@@ -19,7 +19,7 @@ export function valueLabel(item: WalletItem): string {
 }
 
 export const dateLabel = (iso: string | null) =>
-  iso ? new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Jerusalem' }) : 'no expiry';
+  iso ? new Date(iso).toLocaleDateString('en-GB', { timeZone: 'Asia/Jerusalem' }).replace(/\//g, '-') : 'no expiry';
 
 export const STATE_LABEL: Record<ItemState, string> = {
   not_yet_valid: 'not valid yet',

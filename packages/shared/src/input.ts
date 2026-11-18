@@ -21,6 +21,12 @@ export function parseShekels(text: string): number | null {
 export const formatShekels = (agorot: number) =>
   `₪${(agorot / 100).toLocaleString('en-US', { minimumFractionDigits: agorot % 100 ? 2 : 0, maximumFractionDigits: 2 })}`;
 
+/** What is typed into a date field, shown as DD-MM-YYYY: digits only, with the dashes added as the digits arrive. */
+export function maskDate(text: string): string {
+  const d = text.replace(/\D/g, '').slice(0, 8);
+  return [d.slice(0, 2), d.slice(2, 4), d.slice(4)].filter(Boolean).join('-');
+}
+
 /**
  * A validity date with no time ends at the end of that day in Israel (domain model).
  * "2026-12-31" becomes 23:59:59 on that day in Asia/Jerusalem, in summer time (+03:00) or winter time (+02:00).
