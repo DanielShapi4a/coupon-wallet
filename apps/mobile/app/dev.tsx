@@ -20,9 +20,9 @@ import { restoreFromServer, syncNow } from '../src/wallet/wallet';
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
 
 // The app cannot delete the passkey itself before Android 15 (decision 043).
-const PASSKEY_HINT =
-  'One last step: delete the passkey "Coupon Wallet key — do not delete" for danielshapi4a.github.io ' +
-  'in Google Password Manager. It is useless now, because the server no longer has the wrapped key.';
+const ACCOUNT_DELETED =
+  'Your account and all your items were deleted.\n\n' +
+  'You can also delete the passkey "Coupon Wallet key" from Google Password Manager. It no longer opens anything.';
 
 // Development screen: the server connection, the crypto self-test, sign-in and the vault flows.
 // The real screens are designed once the flows work.
@@ -78,7 +78,7 @@ export default function Home() {
             const auth = await LocalAuthentication.authenticateAsync({ promptMessage: 'Confirm account deletion' });
             if (!auth.success) return `not deleted (${auth.error})`;
             await deleteAccount();
-            Alert.alert('Account deleted', PASSKEY_HINT);
+            Alert.alert('Account deleted', ACCOUNT_DELETED);
             return 'deleted on the server and on this phone';
           }),
         },

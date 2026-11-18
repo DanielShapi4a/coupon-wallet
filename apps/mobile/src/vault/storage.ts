@@ -11,6 +11,22 @@ export const loadVaultKey = () => SecureStore.getItemAsync(VAULT_KEY);
 export const saveVaultKey = (encoded: string) => SecureStore.setItemAsync(VAULT_KEY, encoded);
 export const deleteVaultKey = () => SecureStore.deleteItemAsync(VAULT_KEY);
 
+// When the silent check first found the passkey missing (decision 035). A new passkey starts over.
+const PASSKEY_MISSING_SINCE = 'passkey_missing_since';
+
 export const loadPasskeyCredentialId = () => SecureStore.getItemAsync(PASSKEY_CREDENTIAL_ID);
-export const savePasskeyCredentialId = (id: string) => SecureStore.setItemAsync(PASSKEY_CREDENTIAL_ID, id);
-export const deletePasskeyCredentialId = () => SecureStore.deleteItemAsync(PASSKEY_CREDENTIAL_ID);
+export async function savePasskeyCredentialId(id: string): Promise<void> {
+  await SecureStore.setItemAsync(PASSKEY_CREDENTIAL_ID, id);
+  await SecureStore.deleteItemAsync(PASSKEY_MISSING_SINCE);
+}
+export async function deletePasskeyCredentialId(): Promise<void> {
+  await SecureStore.deleteItemAsync(PASSKEY_CREDENTIAL_ID);
+  await SecureStore.deleteItemAsync(PASSKEY_MISSING_SINCE);
+}
+
+export async function loadPasskeyMissingSince(): Promise<number | null> {
+  const stored = await SecureStore.getItemAsync(PASSKEY_MISSING_SINCE);
+  return stored ? Number(stored) : null;
+}
+export const savePasskeyMissingSince = (since: number | null) =>
+  since === null ? SecureStore.deleteItemAsync(PASSKEY_MISSING_SINCE) : SecureStore.setItemAsync(PASSKEY_MISSING_SINCE, String(since));

@@ -1,6 +1,7 @@
 import * as sodium from 'react-native-libsodium';
 import {
   Challenge,
+  confirmPasskeyCheck,
   createVaultCrypto,
   deleteAccountMessage,
   PRF_SALT,
@@ -9,6 +10,7 @@ import {
   type ChallengePurpose,
   type ChallengeRequest,
   type DeleteAccountRequest,
+  type PasskeyCheck,
   type VaultCrypto,
 } from '@cw/shared';
 import { hasPasskey } from '../../modules/credentials';
@@ -110,12 +112,17 @@ export async function recoverVault(): Promise<{ keyId: string }> {
 
 /**
  * Decision 035, layer 2: is the vault's passkey still there? Checked without any UI.
- * 'unknown' means there is nothing to check yet (no vault key on this phone, or no passkey ID).
+ * 'unknown' means there is nothing to check yet (no vault key on this phone, or no passkey ID), or
+ * that the passkey was found missing but not yet confirmed: a passkey created moments ago is not
+ * visible to the check yet, so 'missing' needs a second miss 10 minutes later (confirmPasskeyCheck).
  */
-export async function checkPasskey(): Promise<'present' | 'missing' | 'unknown'> {
+export async function checkPasskey(): Promise<PasskeyCheck> {
   const [vaultKey, credentialId] = await Promise.all([storage.loadVaultKey(), storage.loadPasskeyCredentialId()]);
   if (!vaultKey || !credentialId) return 'unknown';
-  return (await hasPasskey(RP_ID, credentialId)) ? 'present' : 'missing';
+  const found = await hasPasskey(RP_ID, credentialId);
+  const { result, missingSince } = confirmPasskeyCheck(found, await storage.loadPasskeyMissingSince(), Date.now());
+  await storage.savePasskeyMissingSince(missingSince);
+  return result;
 }
 
 /**
