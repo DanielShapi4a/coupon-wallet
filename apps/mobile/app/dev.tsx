@@ -15,6 +15,7 @@ import {
   repairPasskey,
 } from '../src/vault/vault';
 import { restoreFromServer, syncNow } from '../src/wallet/wallet';
+import { setUpNotifications } from '../src/spike/fcm';
 
 // Set in apps/mobile/.env (see .env.example). In development it is the tunnel URL of the local server.
 const API_URL = process.env.EXPO_PUBLIC_API_URL;
@@ -152,6 +153,7 @@ export default function Home() {
         <Button title="Forget key on this phone" onPress={run('Forget key', async () => (await forgetVaultKey(), 'done'))} />
         <Button title="Sign out" onPress={run('Sign out', async () => (await signOut(), 'done'))} />
         <Button title="Delete account" color="#B3261E" onPress={confirmDeleteAccount} />
+        <Button title="Spike 02: set up notifications" onPress={run('Spike 02', setUpNotifications)} />
       </View>
       <ScrollView style={styles.log}>
         {log.map((line, i) => (

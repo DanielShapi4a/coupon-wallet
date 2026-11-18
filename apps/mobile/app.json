@@ -15,13 +15,15 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "googleServicesFile": "./google-services.json"
     },
     "plugins": [
       "expo-router",
       "expo-secure-store",
       "react-native-libsodium",
       "expo-sqlite",
+      "expo-notifications",
       ["expo-build-properties", { "android": { "minSdkVersion": 34 } }]
     ],
     "owner": "danielshapi4a",
